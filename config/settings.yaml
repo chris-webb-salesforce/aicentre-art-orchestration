@@ -1,0 +1,176 @@
+# Robot Portrait Drawing System Configuration
+# ============================================
+
+# MyCobot320 (Processor/Camera Arm)
+mycobot:
+  port: "/dev/ttyAMA0"
+  baud_rate: 115200
+  home_angles: [0, 0, 0, 0, 0, 0]
+  tracking_angles: [0, 20, -30, 0, 30, 0]
+  speed: 30
+  pan_sensitivity: 0.05
+  tilt_sensitivity: 0.05
+
+# Rotrics DexArm (Artist Arm)
+dexarm:
+  port: "/dev/tty.usbmodem3187378532331"
+  baud_rate: 115200
+  feedrate: 4000
+  travel_feedrate: 4000
+
+# Drawing Bounds (mm)
+drawing:
+  x_min: -60.0
+  x_max: 60.0
+  y_min: 240.0
+  y_max: 360.0
+  size_mm: 120
+  z_up: 10.0
+  z_down: 0.0
+  safe_position:
+    x: 0.0
+    y: 300.0
+    z: 30.0
+
+# Logo Settings (drawn above portrait)
+logo:
+  enabled: true
+  path: "config/logo.png"
+  x_min: -30.0
+  x_max: 30.0
+  y_min: 345.0
+  y_max: 385.0
+
+# Camera Settings
+camera:
+  index: 0
+  width: 640
+  height: 480
+  capture_width: 1280
+  capture_height: 720
+
+# Face Tracking Settings
+face_tracking:
+  center_threshold: 0.1
+  stable_duration: 1.5
+  max_tracking_time: 30.0
+  min_face_size: 0.1
+
+# OpenAI API Settings
+openai:
+  model: "gpt-image-1"
+  default_style: "minimal"
+  size: "1024x1024"
+  max_retries: 3
+  retry_delay: 5.0
+
+  # Art style prompts - all optimized for line drawing output
+  styles:
+    minimal:
+      name: "Minimalist Line Art"
+      prompt: |
+        Transform this face portrait into a minimalist single continuous line drawing.
+        Focus entirely on the face - capture the eyes, nose, mouth, and facial outline.
+        Use only simple, clean, flowing black lines on a pure white background.
+        Minimal details, abstract but recognizable. No shading, no filling.
+        Make the lines a single pixel thick. The face should fill most of the image.
+
+    vangogh:
+      name: "Van Gogh Style"
+      prompt: |
+        Transform this face portrait into a Van Gogh-inspired line drawing.
+        Focus on the face with expressive, swirling line work characteristic of Van Gogh.
+        Use bold, confident black lines on white background with flowing, energetic strokes.
+        Capture the emotion and movement. No shading or color, just expressive lines.
+        Make all lines as thin as possible, ideally 1 pixel thick.
+        The face should fill most of the image.
+
+    ghibli:
+      name: "Studio Ghibli"
+      prompt: |
+        Transform this face portrait into a Studio Ghibli anime-style line drawing.
+        Focus on the face with soft, gentle lines and large expressive eyes.
+        Clean black lines on white background, capturing warmth and whimsy.
+        Simple but charming with attention to eyes and expression.
+        Make all lines as thin as possible, ideally 1 pixel thick. No shading or color.
+        The face should fill most of the image.
+
+    picasso:
+      name: "Picasso Cubist"
+      prompt: |
+        Transform this face portrait into a Picasso cubist-style line drawing.
+        Focus on the face with geometric, angular interpretations of features.
+        Abstract the face into shapes and planes while keeping it recognizable.
+        Black lines on white background. No shading or filling.
+        Make all lines as thin as possible, ideally 1 pixel thick.
+        The face should fill most of the image.
+
+    sketch:
+      name: "Quick Sketch"
+      prompt: |
+        Transform this face portrait into a quick artist's sketch.
+        Focus on the face with loose, gestural black lines on white background.
+        Capture the essence with minimal strokes like a 30-second figure drawing.
+        Raw and expressive, not polished. No shading, just confident line work.
+        Make all lines as thin as possible, ideally 1 pixel thick.
+        The face should fill most of the image.
+
+    caricature:
+      name: "Caricature"
+      prompt: |
+        Transform this face portrait into a caricature-style line drawing.
+        Focus on the face, exaggerating distinctive features in a playful way.
+        Black lines on white background.
+        Fun and recognizable with emphasized characteristics.
+        Make all lines as thin as possible, ideally 1 pixel thick. No shading or filling.
+        The face should fill most of the image.
+
+    geometric:
+      name: "Geometric"
+      prompt: |
+        Transform this face portrait into a geometric line drawing.
+        Focus on the face using only straight lines and angular shapes.
+        Low-poly style with black lines on white background.
+        Abstract but recognizable facial structure. No curves, no shading.
+        Make all lines as thin as possible, ideally 1 pixel thick.
+        The face should fill most of the image.
+
+    contour:
+      name: "Blind Contour"
+      prompt: |
+        Transform this face portrait into a blind contour-style line drawing.
+        Focus on the face with one continuous wandering line that traces features.
+        Imperfect, wobbly black line on white background like drawing without looking.
+        Charming and authentic with natural imperfections.
+        Make the line as thin as possible, ideally 1 pixel thick.
+        The face should fill most of the image.
+
+# Contour Extraction Settings
+contour_extraction:
+  canny_low: 50
+  canny_high: 150
+  min_area: 100
+  simplify_epsilon: 2.0
+
+# Path Optimization
+path_optimization:
+  enabled: true
+  min_travel_distance: 5.0
+
+# Personality Animations
+personality:
+  practice_strokes:
+    enabled: true
+    height_offset: 20.0
+    radius: 15.0
+    speed: 1500
+  curious_tilts:
+    enabled: true
+    angle_range: 5.0
+    interval_min: 3.0
+    interval_max: 6.0
+
+# System Settings
+system:
+  output_dir: "output"
+  log_level: "INFO"

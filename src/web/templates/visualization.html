@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Portrait Drawing</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.5.4/socket.io.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #1a1a2e;
+            color: #eee;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .container {
+            text-align: center;
+            max-width: 900px;
+            width: 100%;
+        }
+
+        h1 {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+            color: #fff;
+            font-weight: 300;
+            letter-spacing: 2px;
+        }
+
+        .style-name {
+            font-size: 1.2rem;
+            color: #888;
+            margin-bottom: 30px;
+            text-transform: uppercase;
+            letter-spacing: 3px;
+        }
+
+        .canvas-container {
+            position: relative;
+            display: inline-block;
+            background: #fff;
+            border-radius: 10px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+            overflow: hidden;
+        }
+
+        canvas {
+            display: block;
+        }
+
+        .progress-container {
+            margin-top: 30px;
+            width: 100%;
+            max-width: 600px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+
+        .progress-bar {
+            height: 6px;
+            background: #333;
+            border-radius: 3px;
+            overflow: hidden;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+            width: 0%;
+            transition: width 0.3s ease;
+        }
+
+        .progress-text {
+            margin-top: 10px;
+            font-size: 0.9rem;
+            color: #888;
+        }
+
+        .status {
+            margin-top: 20px;
+            font-size: 1rem;
+            color: #667eea;
+            min-height: 24px;
+        }
+
+        .waiting {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 400px;
+        }
+
+        .waiting-text {
+            font-size: 1.5rem;
+            color: #555;
+            margin-bottom: 20px;
+        }
+
+        .pulse {
+            width: 20px;
+            height: 20px;
+            background: #667eea;
+            border-radius: 50%;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); opacity: 1; }
+            50% { transform: scale(1.5); opacity: 0.5; }
+        }
+
+        .pen-marker {
+            position: absolute;
+            width: 12px;
+            height: 12px;
+            background: #e74c3c;
+            border-radius: 50%;
+            transform: translate(-50%, -50%);
+            pointer-events: none;
+            box-shadow: 0 0 20px rgba(231, 76, 60, 0.8);
+            transition: left 0.1s ease, top 0.1s ease;
+        }
+
+        .pen-marker.pen-up {
+            background: #3498db;
+            box-shadow: 0 0 20px rgba(52, 152, 219, 0.8);
+        }
+
+        .complete-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(102, 126, 234, 0.9);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            opacity: 0;
+            transition: opacity 0.5s ease;
+            pointer-events: none;
+        }
+
+        .complete-overlay.show {
+            opacity: 1;
+        }
+
+        .complete-text {
+            font-size: 2rem;
+            color: #fff;
+            font-weight: 300;
+            letter-spacing: 4px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Portrait Drawing</h1>
+        <div class="style-name" id="styleName">-</div>
+
+        <div id="waitingState" class="waiting">
+            <div class="waiting-text">Waiting for drawing to start...</div>
+            <div class="pulse"></div>
+        </div>
+
+        <div id="drawingState" style="display: none;">
+            <div class="canvas-container">
+                <canvas id="canvas" width="600" height="600"></canvas>
+                <div class="pen-marker" id="penMarker" style="display: none;"></div>
+                <div class="complete-overlay" id="completeOverlay">
+                    <div class="complete-text">COMPLETE</div>
+                </div>
+            </div>
+
+            <div class="progress-container">
+                <div class="progress-bar">
+                    <div class="progress-fill" id="progressFill"></div>
+                </div>
+                <div class="progress-text" id="progressText">0%</div>
+            </div>
+        </div>
+
+        <div class="status" id="status">Connecting...</div>
+    </div>
+
+    <script>
+        const socket = io();
+
+        // Canvas setup
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const penMarker = document.getElementById('penMarker');
+
+        // State
+        let paths = [];
+        let bounds = null;
+        let drawnPoints = [];
+        let currentPosition = { x: 0, y: 0 };
+        let isDrawing = false;
+
+        // Transform drawing coordinates to canvas coordinates
+        function toCanvas(x, y) {
+            if (!bounds) return { x: 0, y: 0 };
+
+            const padding = 40;
+            const drawWidth = canvas.width - padding * 2;
+            const drawHeight = canvas.height - padding * 2;
+
+            const scaleX = drawWidth / (bounds.x_max - bounds.x_min);
+            const scaleY = drawHeight / (bounds.y_max - bounds.y_min);
+            const scale = Math.min(scaleX, scaleY);
+
+            const canvasX = padding + (x - bounds.x_min) * scale;
+            // Flip Y axis (drawing Y increases away from robot, canvas Y increases down)
+            const canvasY = canvas.height - padding - (y - bounds.y_min) * scale;
+
+            return { x: canvasX, y: canvasY };
+        }
+
+        // Draw all paths (ghost/preview)
+        function drawPaths(highlightProgress = 0) {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Draw background grid
+            ctx.strokeStyle = '#f0f0f0';
+            ctx.lineWidth = 1;
+            for (let i = 0; i <= 10; i++) {
+                const x = (canvas.width / 10) * i;
+                const y = (canvas.height / 10) * i;
+                ctx.beginPath();
+                ctx.moveTo(x, 0);
+                ctx.lineTo(x, canvas.height);
+                ctx.stroke();
+                ctx.beginPath();
+                ctx.moveTo(0, y);
+                ctx.lineTo(canvas.width, y);
+                ctx.stroke();
+            }
+
+            // Draw ghost paths (light gray)
+            ctx.strokeStyle = '#ddd';
+            ctx.lineWidth = 2;
+            paths.forEach(path => {
+                if (path.length < 2) return;
+                ctx.beginPath();
+                const start = toCanvas(path[0][0], path[0][1]);
+                ctx.moveTo(start.x, start.y);
+                for (let i = 1; i < path.length; i++) {
+                    const pt = toCanvas(path[i][0], path[i][1]);
+                    ctx.lineTo(pt.x, pt.y);
+                }
+                ctx.stroke();
+            });
+
+            // Draw completed points (dark)
+            if (drawnPoints.length > 1) {
+                ctx.strokeStyle = '#333';
+                ctx.lineWidth = 2.5;
+                ctx.lineCap = 'round';
+                ctx.lineJoin = 'round';
+                ctx.beginPath();
+
+                let penDown = false;
+                drawnPoints.forEach((pt, i) => {
+                    const canvasPt = toCanvas(pt.x, pt.y);
+                    if (pt.penDown && !penDown) {
+                        ctx.moveTo(canvasPt.x, canvasPt.y);
+                        penDown = true;
+                    } else if (pt.penDown && penDown) {
+                        ctx.lineTo(canvasPt.x, canvasPt.y);
+                    } else {
+                        penDown = false;
+                    }
+                });
+                ctx.stroke();
+            }
+        }
+
+        // Update pen marker position
+        function updatePenMarker(x, y, penDown) {
+            const canvasPt = toCanvas(x, y);
+            const container = canvas.parentElement;
+            penMarker.style.left = canvasPt.x + 'px';
+            penMarker.style.top = canvasPt.y + 'px';
+            penMarker.style.display = 'block';
+            penMarker.classList.toggle('pen-up', !penDown);
+        }
+
+        // Socket events
+        socket.on('connect', () => {
+            document.getElementById('status').textContent = 'Connected - waiting for drawing';
+        });
+
+        socket.on('disconnect', () => {
+            document.getElementById('status').textContent = 'Disconnected - reconnecting...';
+        });
+
+        socket.on('drawing_started', (data) => {
+            console.log('Drawing started:', data);
+
+            // Update UI
+            document.getElementById('waitingState').style.display = 'none';
+            document.getElementById('drawingState').style.display = 'block';
+            document.getElementById('styleName').textContent = data.style || 'Drawing';
+            document.getElementById('status').textContent = 'Drawing in progress...';
+            document.getElementById('completeOverlay').classList.remove('show');
+
+            // Store data
+            paths = data.paths || [];
+            bounds = data.bounds;
+            drawnPoints = [];
+            isDrawing = true;
+
+            // Initial draw
+            drawPaths();
+            penMarker.style.display = 'none';
+        });
+
+        socket.on('progress', (data) => {
+            if (!isDrawing) return;
+
+            // Update progress bar
+            const percent = Math.round(data.progress * 100);
+            document.getElementById('progressFill').style.width = percent + '%';
+            document.getElementById('progressText').textContent = `${percent}% (${data.current_line}/${data.total_lines})`;
+
+            // Track drawn points
+            drawnPoints.push({
+                x: data.x,
+                y: data.y,
+                penDown: data.pen_down
+            });
+
+            // Update visualization
+            drawPaths();
+            updatePenMarker(data.x, data.y, data.pen_down);
+        });
+
+        socket.on('drawing_complete', () => {
+            console.log('Drawing complete');
+            isDrawing = false;
+            document.getElementById('status').textContent = 'Drawing complete!';
+            document.getElementById('progressFill').style.width = '100%';
+            document.getElementById('progressText').textContent = '100%';
+            penMarker.style.display = 'none';
+
+            // Show complete overlay
+            setTimeout(() => {
+                document.getElementById('completeOverlay').classList.add('show');
+            }, 500);
+
+            // Reset to waiting after delay
+            setTimeout(() => {
+                document.getElementById('completeOverlay').classList.remove('show');
+                document.getElementById('waitingState').style.display = 'flex';
+                document.getElementById('drawingState').style.display = 'none';
+                document.getElementById('status').textContent = 'Ready for next drawing';
+                document.getElementById('progressFill').style.width = '0%';
+                drawnPoints = [];
+            }, 5000);
+        });
+
+        socket.on('status', (data) => {
+            document.getElementById('status').textContent = data.message;
+        });
+    </script>
+</body>
+</html>
