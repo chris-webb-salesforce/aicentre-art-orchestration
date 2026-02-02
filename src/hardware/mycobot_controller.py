@@ -142,6 +142,11 @@ class MyCobotController:
             return False
 
         try:
+            # Read actual angles from robot to avoid drift
+            actual_angles = self.mc.get_angles()
+            if actual_angles and len(actual_angles) == 6:
+                self._current_angles = actual_angles
+
             # Convert offsets to angle adjustments
             # Pan uses joint 0 (base rotation)
             # Tilt uses joint 1 (shoulder) - adjust sign based on your setup

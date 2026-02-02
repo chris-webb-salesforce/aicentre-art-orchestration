@@ -246,6 +246,9 @@ class FaceTracker:
                     config.pan_sensitivity if hasattr(config, 'pan_sensitivity') else 0.05,
                     config.tilt_sensitivity if hasattr(config, 'tilt_sensitivity') else 0.05
                 )
+                # Give the arm time to reach the new position before next adjustment
+                time.sleep(0.3)
+                continue
 
             time.sleep(0.05)  # ~20 FPS tracking
 
