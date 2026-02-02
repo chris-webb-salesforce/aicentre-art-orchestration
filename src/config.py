@@ -25,6 +25,9 @@ class DexArmConfig:
     baud_rate: int = 115200
     feedrate: int = 2000
     travel_feedrate: int = 3000
+    acceleration: int = 200           # Drawing acceleration (mm/s²)
+    travel_acceleration: int = 400    # Travel acceleration (mm/s²)
+    jerk: float = 5.0                 # Jerk limit (mm/s) - lower = smoother
 
 
 @dataclass
@@ -36,6 +39,8 @@ class DrawingConfig:
     size_mm: float = 80.0
     z_up: float = 10.0
     z_down: float = 0.0
+    flip_x: bool = True   # Mirror horizontally (fixes camera mirror effect)
+    flip_y: bool = False  # Mirror vertically
     safe_position: dict = field(default_factory=lambda: {"x": 0.0, "y": 300.0, "z": 30.0})
 
 
@@ -67,20 +72,70 @@ class FaceTrackingConfig:
 
 
 @dataclass
+class StyleContourConfig:
+    """Contour extraction overrides for a style. All fields are optional."""
+    method: str = None
+    canny_low: int = None
+    canny_high: int = None
+    min_area: int = None
+    simplify_epsilon: float = None
+    blur_kernel: int = None
+    min_contour_points: int = None
+    thickness_threshold: int = None
+    density_threshold: float = None
+    skeleton_simplify: float = None
+    min_length: float = None
+    merge_distance: float = None
+    merge_enabled: bool = None
+    region_aware: bool = None
+    detail_simplify_epsilon: float = None
+    detail_min_length: float = None
+    detail_min_area: int = None
+    detail_region_padding: int = None
+
+
+@dataclass
+class StyleConfig:
+    """Configuration for an art style."""
+    name: str = ""
+    prompt: str = ""
+    contour: StyleContourConfig = None  # Optional contour overrides for this style
+
+
+@dataclass
 class OpenAIConfig:
     model: str = "gpt-image-1"
     prompt: str = "Transform this portrait into a minimalist single continuous line drawing."
     size: str = "1024x1024"
     max_retries: int = 3
     retry_delay: float = 5.0
+    default_style: str = "minimal"
+    reference_image: str = None  # Path to style reference image
+    styles: dict = field(default_factory=dict)  # Dict of style_name -> StyleConfig
 
 
 @dataclass
 class ContourConfig:
-    canny_low: int = 50
-    canny_high: int = 150
-    min_area: int = 100
-    simplify_epsilon: float = 2.0
+    method: str = "adaptive"          # "canny", "skeleton", "adaptive", or "hybrid"
+    canny_low: int = 30
+    canny_high: int = 100
+    min_area: int = 50
+    simplify_epsilon: float = 0.8
+    blur_kernel: int = 3              # Gaussian blur kernel size (3 or 5)
+    min_contour_points: int = 5       # Minimum points to keep a contour
+    thickness_threshold: int = 3      # For adaptive: lines thicker than this use skeleton
+    density_threshold: float = 0.3    # For adaptive: density above this triggers skeleton
+    skeleton_simplify: float = 1.0    # Simplification for skeleton contours
+    # Speed optimizations
+    min_length: float = 10.0          # Minimum contour length in pixels
+    merge_distance: float = 5.0       # Merge contours with endpoints within this distance
+    merge_enabled: bool = True        # Enable contour merging to reduce pen lifts
+    # Region-aware processing (preserves detail in facial features)
+    region_aware: bool = False        # Enable face/eye detection for detail preservation
+    detail_simplify_epsilon: float = 0.3   # Lower epsilon for detail regions
+    detail_min_length: float = 3.0    # Keep smaller contours in detail regions
+    detail_min_area: int = 10         # Keep smaller areas in detail regions
+    detail_region_padding: int = 20   # Pixels to expand around detected features
 
 
 @dataclass
@@ -181,6 +236,46 @@ def load_config(config_path: Optional[str] = None) -> Config:
         return Config()
 
     # Build config object from YAML data
+    openai_config = _dict_to_dataclass(data.get('openai'), OpenAIConfig)
+
+    # Convert styles dict entries to StyleConfig objects
+    openai_data = data.get('openai', {})
+    if 'styles' in openai_data and isinstance(openai_data['styles'], dict):
+        styles = {}
+        for style_name, style_data in openai_data['styles'].items():
+            if isinstance(style_data, dict):
+                # Parse contour overrides if present
+                contour_config = None
+                if 'contour' in style_data and isinstance(style_data['contour'], dict):
+                    contour_data = style_data['contour']
+                    contour_config = StyleContourConfig(
+                        method=contour_data.get('method'),
+                        canny_low=contour_data.get('canny_low'),
+                        canny_high=contour_data.get('canny_high'),
+                        min_area=contour_data.get('min_area'),
+                        simplify_epsilon=contour_data.get('simplify_epsilon'),
+                        blur_kernel=contour_data.get('blur_kernel'),
+                        min_contour_points=contour_data.get('min_contour_points'),
+                        thickness_threshold=contour_data.get('thickness_threshold'),
+                        density_threshold=contour_data.get('density_threshold'),
+                        skeleton_simplify=contour_data.get('skeleton_simplify'),
+                        min_length=contour_data.get('min_length'),
+                        merge_distance=contour_data.get('merge_distance'),
+                        merge_enabled=contour_data.get('merge_enabled'),
+                        region_aware=contour_data.get('region_aware'),
+                        detail_simplify_epsilon=contour_data.get('detail_simplify_epsilon'),
+                        detail_min_length=contour_data.get('detail_min_length'),
+                        detail_min_area=contour_data.get('detail_min_area'),
+                        detail_region_padding=contour_data.get('detail_region_padding'),
+                    )
+
+                styles[style_name] = StyleConfig(
+                    name=style_data.get('name', style_name),
+                    prompt=style_data.get('prompt', ''),
+                    contour=contour_config
+                )
+        openai_config.styles = styles
+
     config = Config(
         mycobot=_dict_to_dataclass(data.get('mycobot'), MyCobotConfig),
         dexarm=_dict_to_dataclass(data.get('dexarm'), DexArmConfig),
@@ -188,7 +283,7 @@ def load_config(config_path: Optional[str] = None) -> Config:
         logo=_dict_to_dataclass(data.get('logo'), LogoConfig),
         camera=_dict_to_dataclass(data.get('camera'), CameraConfig),
         face_tracking=_dict_to_dataclass(data.get('face_tracking'), FaceTrackingConfig),
-        openai=_dict_to_dataclass(data.get('openai'), OpenAIConfig),
+        openai=openai_config,
         contour=_dict_to_dataclass(data.get('contour_extraction'), ContourConfig),
         path_optimization=_dict_to_dataclass(data.get('path_optimization'), PathOptimizationConfig),
         personality=_dict_to_dataclass(data.get('personality'), PersonalityConfig),
@@ -243,6 +338,13 @@ if __name__ == "__main__":
     print(f"  DexArm port: {config.dexarm.port}")
     print(f"  Drawing bounds: X({config.drawing.x_min}, {config.drawing.x_max}), Y({config.drawing.y_min}, {config.drawing.y_max})")
     print(f"  Z heights: up={config.drawing.z_up}, down={config.drawing.z_down}")
+
+    # Test styles loading
+    print(f"\n  OpenAI default style: {config.openai.default_style}")
+    print(f"  Loaded {len(config.openai.styles)} art styles:")
+    for name, style in config.openai.styles.items():
+        prompt_preview = style.prompt[:50].replace('\n', ' ') + "..." if len(style.prompt) > 50 else style.prompt
+        print(f"    - {name}: {style.name} -> {prompt_preview}")
 
     errors = validate_config(config)
     if errors:

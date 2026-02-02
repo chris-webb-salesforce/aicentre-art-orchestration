@@ -10,6 +10,14 @@ Usage:
     python scripts/webcam_to_dexarm.py --mock             # Use local edge detection instead of OpenAI
     python scripts/webcam_to_dexarm.py --preview-only     # Preview without drawing
     python scripts/webcam_to_dexarm.py -y                 # Skip confirmations
+    python scripts/webcam_to_dexarm.py -d skeleton        # Use skeleton line detection
+    python scripts/webcam_to_dexarm.py -d adaptive        # Use smart adaptive detection
+
+Line detection methods (-d/--detection):
+    canny    - Traditional edge detection (detects edges of lines)
+    skeleton - Skeletonization (finds centerline of thick lines)
+    adaptive - Smart auto (uses skeleton for thick areas, canny for thin)
+    hybrid   - Runs both methods and merges results
 """
 
 import sys
@@ -29,6 +37,7 @@ from src.config import load_config
 from src.hardware.camera_controller import CameraController
 from src.vision.face_tracker import FaceTracker
 from src.vision.contour_extractor import ContourExtractor
+from src.vision.adaptive_extractor import AdaptiveContourExtractor, AdaptiveExtractorConfig
 from src.planning.gcode_generator import GCodeGenerator, DrawingBounds
 
 
@@ -203,12 +212,20 @@ def process_image(image, config, args, style=None):
         # Use style prompt if available
         prompt = style.prompt if style else "Transform this face into a minimalist line drawing with black lines on white background."
 
+        # Resolve reference image path
+        reference_image = None
+        if hasattr(config.openai, 'reference_image') and config.openai.reference_image:
+            reference_image = config.openai.reference_image
+            if not os.path.isabs(reference_image):
+                reference_image = os.path.join(project_root, reference_image)
+
         client = OpenAIClient(
             model=config.openai.model,
             prompt=prompt,
             size=config.openai.size,
             max_retries=config.openai.max_retries,
-            retry_delay=config.openai.retry_delay
+            retry_delay=config.openai.retry_delay,
+            reference_image=reference_image
         )
 
         if not client.initialize():
@@ -228,15 +245,68 @@ def process_image(image, config, args, style=None):
     return line_art
 
 
-def extract_and_generate_gcode(line_art, config):
-    """Extract contours and generate GCode. Returns (gcode, contours, drawing_bounds)."""
+def extract_and_generate_gcode(line_art, config, args, style=None):
+    """Extract contours and generate GCode. Returns (gcode, contours, drawing_bounds).
 
-    extractor = ContourExtractor(
-        canny_low=config.contour.canny_low,
-        canny_high=config.contour.canny_high,
-        min_area=config.contour.min_area,
-        simplify_epsilon=config.contour.simplify_epsilon
+    If a style with contour settings is provided, those settings override the base config.
+    """
+
+    # Helper to get value with style override
+    def get_contour_setting(name, default=None):
+        """Get contour setting, preferring style override if available."""
+        # Check style contour override first
+        if style and style.contour:
+            style_val = getattr(style.contour, name, None)
+            if style_val is not None:
+                return style_val
+        # Fall back to base config
+        base_val = getattr(config.contour, name, default)
+        return base_val if base_val is not None else default
+
+    # Choose extraction method based on --detection argument, then style, then base config
+    if getattr(args, 'detection', None):
+        detection_method = args.detection
+    elif style and style.contour and style.contour.method:
+        detection_method = style.contour.method
+    else:
+        detection_method = config.contour.method
+
+    print(f"Using line detection method: {detection_method}")
+    if style:
+        print(f"Using contour settings from style: {style.name}")
+        if style.contour:
+            print(f"  Style overrides: method={style.contour.method}, min_length={style.contour.min_length}, merge_enabled={style.contour.merge_enabled}")
+        else:
+            print(f"  No contour overrides in style")
+
+    # Debug: show key settings being used
+    print(f"  Effective settings: min_length={get_contour_setting('min_length', 10.0)}, merge_enabled={get_contour_setting('merge_enabled', True)}, merge_distance={get_contour_setting('merge_distance', 5.0)}")
+
+    # Always use AdaptiveContourExtractor - it supports all methods and has
+    # min_length filtering and merge_nearby_contours
+    adaptive_config = AdaptiveExtractorConfig(
+        method=detection_method,
+        canny_low=get_contour_setting('canny_low', 30),
+        canny_high=get_contour_setting('canny_high', 100),
+        min_area=get_contour_setting('min_area', 50),
+        simplify_epsilon=get_contour_setting('simplify_epsilon', 0.8),
+        blur_kernel=get_contour_setting('blur_kernel', 3),
+        min_contour_points=get_contour_setting('min_contour_points', 5),
+        thickness_threshold=get_contour_setting('thickness_threshold', 3),
+        density_threshold=get_contour_setting('density_threshold', 0.3),
+        skeleton_simplify=get_contour_setting('skeleton_simplify', 1.0),
+        # Speed optimizations
+        min_length=get_contour_setting('min_length', 10.0),
+        merge_distance=get_contour_setting('merge_distance', 5.0),
+        merge_enabled=get_contour_setting('merge_enabled', True),
+        # Region-aware processing
+        region_aware=get_contour_setting('region_aware', False),
+        detail_simplify_epsilon=get_contour_setting('detail_simplify_epsilon', 0.3),
+        detail_min_length=get_contour_setting('detail_min_length', 3.0),
+        detail_min_area=get_contour_setting('detail_min_area', 10),
+        detail_region_padding=get_contour_setting('detail_region_padding', 20)
     )
+    extractor = AdaptiveContourExtractor(adaptive_config)
 
     print("Extracting contours...")
     contours = extractor.extract(line_art)
@@ -266,7 +336,9 @@ def extract_and_generate_gcode(line_art, config):
         z_up=config.drawing.z_up,
         z_down=config.drawing.z_down,
         feedrate=config.dexarm.feedrate,
-        travel_feedrate=config.dexarm.travel_feedrate
+        travel_feedrate=config.dexarm.travel_feedrate,
+        flip_x=config.drawing.flip_x,
+        flip_y=config.drawing.flip_y
     )
 
     generator = GCodeGenerator(drawing_bounds)
@@ -289,7 +361,10 @@ def extract_and_generate_gcode(line_art, config):
 
 
 def generate_logo_gcode(config):
-    """Generate GCode for the logo image. Returns gcode list or None if disabled/not found."""
+    """Generate GCode for the logo. Returns gcode list or None if disabled/not found.
+
+    Supports both .gcode files (loaded directly) and image files (processed for contours).
+    """
 
     # Check if logo is enabled
     if not hasattr(config, 'logo') or not config.logo.enabled:
@@ -307,7 +382,14 @@ def generate_logo_gcode(config):
 
     print(f"\nProcessing logo: {logo_path}")
 
-    # Load logo image
+    # If it's a .gcode file, load it directly
+    if logo_path.lower().endswith('.gcode'):
+        with open(logo_path, 'r') as f:
+            gcode = [line.strip() for line in f if line.strip()]
+        print(f"Logo GCode loaded: {len(gcode)} lines")
+        return gcode
+
+    # Otherwise, process as image
     logo_img = cv2.imread(logo_path)
     if logo_img is None:
         print(f"ERROR: Could not load logo image: {logo_path}")
@@ -341,7 +423,9 @@ def generate_logo_gcode(config):
         z_up=config.drawing.z_up,
         z_down=config.drawing.z_down,
         feedrate=config.dexarm.feedrate,
-        travel_feedrate=config.dexarm.travel_feedrate
+        travel_feedrate=config.dexarm.travel_feedrate,
+        flip_x=config.drawing.flip_x,
+        flip_y=config.drawing.flip_y
     )
 
     generator = GCodeGenerator(logo_bounds)
@@ -388,7 +472,10 @@ def draw_logo_on_dexarm(config, args):
         feedrate=config.dexarm.feedrate,
         travel_feedrate=config.dexarm.travel_feedrate,
         z_up=config.drawing.z_up,
-        z_down=config.drawing.z_down
+        z_down=config.drawing.z_down,
+        acceleration=config.dexarm.acceleration,
+        travel_acceleration=config.dexarm.travel_acceleration,
+        jerk=getattr(config.dexarm, 'jerk', 5.0)
     )
 
     if not arm.initialize():
@@ -397,10 +484,13 @@ def draw_logo_on_dexarm(config, args):
 
     print("DexArm connected! Drawing logo...")
 
-    def logo_progress(current, total, pos):
+    def logo_progress(current, total, pos, contour=None, total_contours=None):
         if current % 50 == 0 or current == total:
             pct = 100 * current / total if total > 0 else 0
-            print(f"  Logo: {current}/{total} ({pct:.0f}%)")
+            if contour and total_contours:
+                print(f"  Logo: contour {contour}/{total_contours} ({pct:.0f}%)")
+            else:
+                print(f"  Logo: {current}/{total} ({pct:.0f}%)")
 
     arm.stream_gcode(logo_gcode, logo_progress)
     print("Logo complete!")
@@ -423,7 +513,10 @@ def send_to_dexarm(gcode, config, args, style_name=None, arm=None):
             feedrate=config.dexarm.feedrate,
             travel_feedrate=config.dexarm.travel_feedrate,
             z_up=config.drawing.z_up,
-            z_down=config.drawing.z_down
+            z_down=config.drawing.z_down,
+            acceleration=config.dexarm.acceleration,
+            travel_acceleration=config.dexarm.travel_acceleration,
+            jerk=getattr(config.dexarm, 'jerk', 5.0)
         )
 
         if not arm.initialize():
@@ -438,10 +531,22 @@ def send_to_dexarm(gcode, config, args, style_name=None, arm=None):
     else:
         print("\nUsing existing DexArm connection for portrait...")
 
-    def progress(current, total, pos):
+    last_contour = [0]  # Use list to allow modification in nested function
+
+    def progress(current, total, _pos, contour=None, total_contours=None):
         pct = 100 * current / total if total > 0 else 0
-        if current % 10 == 0 or current == total:
-            print(f"  Progress: {current}/{total} ({pct:.0f}%)")
+
+        # Show progress when contour changes or at regular intervals
+        contour_changed = contour and contour != last_contour[0]
+        at_interval = current % 20 == 0 or current == total
+
+        if contour_changed or at_interval:
+            if contour and total_contours:
+                contour_pct = 100 * contour / total_contours
+                print(f"  Drawing contour {contour}/{total_contours} ({contour_pct:.0f}%) - {pct:.0f}% complete")
+                last_contour[0] = contour
+            else:
+                print(f"  Progress: {pct:.0f}%")
 
     try:
         success = arm.stream_gcode(gcode, progress)
@@ -469,10 +574,15 @@ def main():
     parser.add_argument('--preview-only', action='store_true', help='Generate GCode but do not draw')
     parser.add_argument('-y', '--yes', action='store_true', help='Skip confirmation prompts')
     parser.add_argument('-s', '--style',
-                        choices=['minimal', 'vangogh', 'ghibli', 'picasso', 'sketch', 'caricature', 'geometric', 'contour'],
+                        choices=['minimal', 'vangogh', 'ghibli', 'picasso', 'sketch', 'caricature', 'geometric', 'contour', 'simple'],
                         default=None,
                         help='Art style (default: minimal). Options: minimal, vangogh, ghibli, picasso, sketch, caricature, geometric, contour')
     parser.add_argument('--music', help='Audio file to play while drawing (mp3, wav, etc.)')
+    parser.add_argument('-d', '--detection',
+                        choices=['canny', 'skeleton', 'adaptive', 'hybrid'],
+                        default=None,
+                        help='Line detection method (default: from config). '
+                             'canny=edges, skeleton=centerlines, adaptive=smart auto, hybrid=both merged')
 
     args = parser.parse_args()
     config = load_config()
@@ -492,9 +602,14 @@ def main():
                 return 1
             print(f"Loaded image: {line_art.shape[1]}x{line_art.shape[0]}")
 
-            # No style needed when loading existing line art
-            style = None
-            style_name = "custom"
+            # Still allow using style's contour settings with --image
+            style_name = args.style or config.openai.default_style
+            if hasattr(config.openai, 'styles') and style_name in config.openai.styles:
+                style = config.openai.styles[style_name]
+                print(f"Using contour settings from style: {style.name}")
+            else:
+                style = None
+                style_name = "custom"
 
             # Draw logo while we generate GCode (if not preview-only)
             arm = None
@@ -552,7 +667,7 @@ def main():
             if line_art is None:
                 return 1
 
-        gcode, contours, drawing_bounds = extract_and_generate_gcode(line_art, config)
+        gcode, _, _ = extract_and_generate_gcode(line_art, config, args, style=style)
         if gcode is None:
             return 1
 
@@ -563,7 +678,7 @@ def main():
 
         success = send_to_dexarm(
             gcode, config, args,
-            style_name=style.name if style else style_name,
+            style_name=style.name if style else None,
             arm=arm  # Reuse connection from logo drawing
         )
 

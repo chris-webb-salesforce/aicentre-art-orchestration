@@ -29,7 +29,8 @@ class OpenAIClient:
         prompt: str = None,
         size: str = "1024x1024",
         max_retries: int = 3,
-        retry_delay: float = 5.0
+        retry_delay: float = 5.0,
+        reference_image: str = None
     ):
         """
         Initialize OpenAI client.
@@ -40,6 +41,7 @@ class OpenAIClient:
             size: Output image size
             max_retries: Number of retry attempts
             retry_delay: Delay between retries in seconds
+            reference_image: Path to style reference image
         """
         self.model = model
         self.prompt = prompt or (
@@ -51,6 +53,7 @@ class OpenAIClient:
         self.size = size
         self.max_retries = max_retries
         self.retry_delay = retry_delay
+        self.reference_image = reference_image
         self._client = None
 
     def initialize(self) -> bool:
@@ -145,17 +148,32 @@ class OpenAIClient:
         """
         last_error = None
 
+        # Build prompt with reference image instruction if available
+        prompt = self.prompt
+        if self.reference_image and os.path.exists(self.reference_image):
+            prompt = f"Use the style reference image as a guide for the line art style. {prompt}"
+            logger.info(f"Using reference image: {self.reference_image}")
+
         for attempt in range(self.max_retries):
             try:
                 logger.info(f"Generating line art (attempt {attempt + 1}/{self.max_retries})...")
 
-                with open(image_path, 'rb') as image_file:
+                # Prepare image list - portrait first, then reference if available
+                images = [open(image_path, 'rb')]
+                if self.reference_image and os.path.exists(self.reference_image):
+                    images.append(open(self.reference_image, 'rb'))
+
+                try:
                     result = self._client.images.edit(
                         model=self.model,
-                        image=image_file,
-                        prompt=self.prompt,
+                        image=images,
+                        prompt=prompt,
                         size=self.size
                     )
+                finally:
+                    # Close all opened files
+                    for f in images:
+                        f.close()
 
                 # Extract image data
                 image_bytes = self._extract_image_bytes(result)

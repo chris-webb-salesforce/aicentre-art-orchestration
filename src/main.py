@@ -42,6 +42,7 @@ from src.hardware.mycobot_controller import MyCobotController
 from src.hardware.dexarm_controller import DexArmController
 from src.vision.face_tracker import FaceTracker
 from src.vision.contour_extractor import ContourExtractor
+from src.vision.adaptive_extractor import AdaptiveContourExtractor, AdaptiveExtractorConfig
 from src.ai.openai_client import OpenAIClient, MockOpenAIClient
 from src.planning.gcode_generator import GCodeGenerator, DrawingBounds
 from src.personality import PersonalityDirector
@@ -144,7 +145,9 @@ class PortraitSystem:
             feedrate=self.config.dexarm.feedrate,
             travel_feedrate=self.config.dexarm.travel_feedrate,
             z_up=self.config.drawing.z_up,
-            z_down=self.config.drawing.z_down
+            z_down=self.config.drawing.z_down,
+            acceleration=self.config.dexarm.acceleration,
+            travel_acceleration=self.config.dexarm.travel_acceleration
         )
         if not self.dexarm.initialize():
             logger.error("Failed to initialize DexArm")
@@ -169,14 +172,33 @@ class PortraitSystem:
             logger.error("Failed to initialize AI client")
             return False
 
-        # Initialize contour extractor
-        logger.info("Initializing contour extractor...")
-        self.contour_extractor = ContourExtractor(
-            canny_low=self.config.contour.canny_low,
-            canny_high=self.config.contour.canny_high,
-            min_area=self.config.contour.min_area,
-            simplify_epsilon=self.config.contour.simplify_epsilon
-        )
+        # Initialize contour extractor (use adaptive if configured)
+        logger.info(f"Initializing contour extractor (method: {self.config.contour.method})...")
+        if self.config.contour.method.lower() == "canny":
+            # Use original ContourExtractor
+            self.contour_extractor = ContourExtractor(
+                canny_low=self.config.contour.canny_low,
+                canny_high=self.config.contour.canny_high,
+                min_area=self.config.contour.min_area,
+                simplify_epsilon=self.config.contour.simplify_epsilon,
+                blur_kernel=self.config.contour.blur_kernel,
+                min_contour_points=self.config.contour.min_contour_points
+            )
+        else:
+            # Use AdaptiveContourExtractor for skeleton/adaptive/hybrid
+            adaptive_config = AdaptiveExtractorConfig(
+                method=self.config.contour.method,
+                canny_low=self.config.contour.canny_low,
+                canny_high=self.config.contour.canny_high,
+                min_area=self.config.contour.min_area,
+                simplify_epsilon=self.config.contour.simplify_epsilon,
+                blur_kernel=self.config.contour.blur_kernel,
+                min_contour_points=self.config.contour.min_contour_points,
+                thickness_threshold=self.config.contour.thickness_threshold,
+                density_threshold=self.config.contour.density_threshold,
+                skeleton_simplify=self.config.contour.skeleton_simplify
+            )
+            self.contour_extractor = AdaptiveContourExtractor(adaptive_config)
 
         # Initialize GCode generator
         logger.info("Initializing GCode generator...")
@@ -188,7 +210,9 @@ class PortraitSystem:
             z_up=self.config.drawing.z_up,
             z_down=self.config.drawing.z_down,
             feedrate=self.config.dexarm.feedrate,
-            travel_feedrate=self.config.dexarm.travel_feedrate
+            travel_feedrate=self.config.dexarm.travel_feedrate,
+            flip_x=self.config.drawing.flip_x,
+            flip_y=self.config.drawing.flip_y
         )
         self.gcode_generator = GCodeGenerator(bounds)
 
@@ -480,15 +504,21 @@ class PortraitSystem:
         """
         start_time = time.time()
 
-        def progress_callback(current, total, position):
+        def progress_callback(current, total, _position, contour=None, total_contours=None):
             elapsed = time.time() - start_time
             if current > 0:
                 est_total = elapsed * total / current
                 remaining = est_total - elapsed
-                logger.info(
-                    f"Drawing progress: {current}/{total} ({100*current/total:.1f}%) "
-                    f"- {remaining:.0f}s remaining"
-                )
+                if contour and total_contours:
+                    logger.info(
+                        f"Drawing contour {contour}/{total_contours} ({100*contour/total_contours:.0f}%) "
+                        f"- {remaining:.0f}s remaining"
+                    )
+                else:
+                    logger.info(
+                        f"Drawing progress: {current}/{total} ({100*current/total:.1f}%) "
+                        f"- {remaining:.0f}s remaining"
+                    )
 
         return self.dexarm.stream_gcode(gcode, progress_callback)
 

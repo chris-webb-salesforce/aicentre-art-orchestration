@@ -32,7 +32,10 @@ class DexArmController:
         feedrate: int = 2000,
         travel_feedrate: int = 3000,
         z_up: float = 10.0,
-        z_down: float = 0.0
+        z_down: float = 0.0,
+        acceleration: int = 200,
+        travel_acceleration: int = 400,
+        jerk: float = 5.0
     ):
         """
         Initialize DexArm controller.
@@ -44,6 +47,9 @@ class DexArmController:
             travel_feedrate: Speed for pen-up moves (mm/min)
             z_up: Z height when pen is up (mm)
             z_down: Z height when pen is down (mm)
+            acceleration: Acceleration for drawing moves (mm/s²)
+            travel_acceleration: Acceleration for travel moves (mm/s²)
+            jerk: Jerk limit for X/Y axes (mm/s) - lower = smoother direction changes
         """
         self.port = port
         self.baud_rate = baud_rate
@@ -51,6 +57,9 @@ class DexArmController:
         self.travel_feedrate = travel_feedrate
         self.z_up = z_up
         self.z_down = z_down
+        self.acceleration = acceleration
+        self.travel_acceleration = travel_acceleration
+        self.jerk = jerk
         self.arm: Optional[Dexarm] = None
         self._is_initialized = False
         self._pen_is_down = False
@@ -74,6 +83,20 @@ class DexArmController:
             # Set pen module mode
             self.arm.set_module_kind(0)  # 0 = pen module
             time.sleep(0.5)
+
+            # Set acceleration limits for smooth motion
+            logger.info(f"Setting acceleration: {self.acceleration} mm/s² (drawing), {self.travel_acceleration} mm/s² (travel)")
+            self.arm.set_acceleration(
+                acceleration=self.acceleration,
+                travel_acceleration=self.travel_acceleration,
+                retract_acceleration=60  # Default for pen lifts
+            )
+            time.sleep(0.2)
+
+            # Set jerk limits for smoother direction changes (M205)
+            logger.info(f"Setting jerk limit: {self.jerk} mm/s")
+            self.arm._send_cmd(f"M205 X{self.jerk} Y{self.jerk} Z{self.jerk}\r")
+            time.sleep(0.2)
 
             # Home the arm
             logger.info("Homing DexArm...")
@@ -234,14 +257,15 @@ class DexArmController:
     def stream_gcode(
         self,
         gcode_lines: List[str],
-        progress_callback: Optional[Callable[[int, int, Tuple[float, float]], None]] = None
+        progress_callback: Optional[Callable[[int, int, Tuple[float, float], Optional[int], Optional[int]], None]] = None
     ) -> bool:
         """
         Stream GCode commands to the DexArm line by line.
 
         Args:
             gcode_lines: List of GCode command strings
-            progress_callback: Optional callback(current_line, total_lines, position)
+            progress_callback: Optional callback(current_line, total_lines, position, current_contour, total_contours)
+                              current_contour and total_contours may be None if not available
 
         Returns:
             True if all commands executed successfully.
@@ -253,10 +277,28 @@ class DexArmController:
         total_lines = len(gcode_lines)
         successful = 0
 
-        logger.info(f"Starting GCode stream: {total_lines} lines")
+        # Pre-scan for contour markers to get total count
+        total_contours = 0
+        for line in gcode_lines:
+            if line.strip().startswith(";CONTOUR "):
+                total_contours += 1
+
+        current_contour = 0
+
+        logger.info(f"Starting GCode stream: {total_lines} lines, {total_contours} contours")
 
         try:
             for i, line in enumerate(gcode_lines):
+                # Check for contour marker
+                stripped = line.strip()
+                if stripped.startswith(";CONTOUR "):
+                    # Parse contour number (format: ";CONTOUR X/Y")
+                    try:
+                        parts = stripped.split()[1].split("/")
+                        current_contour = int(parts[0])
+                    except (IndexError, ValueError):
+                        current_contour += 1
+
                 if not self.execute_gcode_line(line):
                     logger.error(f"Failed at line {i + 1}: {line}")
                     return False
@@ -265,9 +307,15 @@ class DexArmController:
 
                 if progress_callback and (i % 10 == 0 or i == total_lines - 1):
                     x, y, _ = self._current_position
-                    progress_callback(i + 1, total_lines, (x, y))
+                    progress_callback(
+                        i + 1,
+                        total_lines,
+                        (x, y),
+                        current_contour if total_contours > 0 else None,
+                        total_contours if total_contours > 0 else None
+                    )
 
-            logger.info(f"GCode stream complete: {successful}/{total_lines} lines")
+            logger.info(f"GCode stream complete: {successful}/{total_lines} lines, {total_contours} contours")
             return True
 
         except Exception as e:
@@ -415,6 +463,7 @@ if __name__ == "__main__":
         print("Testing GCode execution...")
         test_gcode = [
             "G0 Z10",
+            ";CONTOUR 1/2",
             "G0 X-20 Y280",
             "G1 Z0",
             "G1 X20 Y280",
@@ -422,11 +471,18 @@ if __name__ == "__main__":
             "G1 X-20 Y320",
             "G1 X-20 Y280",
             "G0 Z10",
-            "G0 X0 Y300"
+            ";CONTOUR 2/2",
+            "G0 X0 Y300",
+            "G1 Z0",
+            "G1 X10 Y310",
+            "G0 Z10"
         ]
 
-        def progress(current, total, pos):
-            print(f"  Progress: {current}/{total} at ({pos[0]:.1f}, {pos[1]:.1f})")
+        def progress(current, total, pos, contour=None, total_contours=None):
+            if contour and total_contours:
+                print(f"  Contour {contour}/{total_contours} - line {current}/{total} at ({pos[0]:.1f}, {pos[1]:.1f})")
+            else:
+                print(f"  Progress: {current}/{total} at ({pos[0]:.1f}, {pos[1]:.1f})")
 
         controller.stream_gcode(test_gcode, progress)
 

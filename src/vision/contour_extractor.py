@@ -7,7 +7,7 @@ Converts OpenAI-generated line art PNG to drawable paths.
 import cv2
 import numpy as np
 from dataclasses import dataclass
-from typing import List, Tuple, Optional
+from typing import List, Tuple
 import logging
 
 logger = logging.getLogger(__name__)
@@ -32,24 +32,30 @@ class ContourExtractor:
 
     def __init__(
         self,
-        canny_low: int = 50,
-        canny_high: int = 150,
-        min_area: int = 100,
-        simplify_epsilon: float = 2.0
+        canny_low: int = 30,
+        canny_high: int = 100,
+        min_area: int = 50,
+        simplify_epsilon: float = 0.8,
+        blur_kernel: int = 3,
+        min_contour_points: int = 10
     ):
         """
         Initialize contour extractor.
 
         Args:
-            canny_low: Lower threshold for Canny edge detection
-            canny_high: Upper threshold for Canny edge detection
+            canny_low: Lower threshold for Canny edge detection (lower = more sensitive)
+            canny_high: Upper threshold for Canny edge detection (lower = more edges)
             min_area: Minimum contour area to keep (filters noise)
             simplify_epsilon: Path simplification factor (higher = fewer points)
+            blur_kernel: Gaussian blur kernel size (smaller = preserves fine detail)
+            min_contour_points: Minimum points to keep a contour
         """
         self.canny_low = canny_low
         self.canny_high = canny_high
         self.min_area = min_area
         self.simplify_epsilon = simplify_epsilon
+        self.blur_kernel = blur_kernel
+        self.min_contour_points = min_contour_points
 
     def extract(self, image: np.ndarray) -> List[Contour]:
         """
@@ -71,8 +77,9 @@ class ContourExtractor:
         if np.mean(gray) > 127:
             gray = cv2.bitwise_not(gray)
 
-        # Apply Gaussian blur to reduce noise
-        blurred = cv2.GaussianBlur(gray, (5, 5), 0)
+        # Apply Gaussian blur to reduce noise (smaller kernel preserves fine detail)
+        kernel_size = (self.blur_kernel, self.blur_kernel)
+        blurred = cv2.GaussianBlur(gray, kernel_size, 0)
 
         # Apply Canny edge detection
         edges = cv2.Canny(blurred, self.canny_low, self.canny_high)
@@ -82,7 +89,7 @@ class ContourExtractor:
         edges = cv2.dilate(edges, kernel, iterations=1)
 
         # Find contours
-        contours_cv, hierarchy = cv2.findContours(
+        contours_cv, _ = cv2.findContours(
             edges,
             cv2.RETR_LIST,  # Get all contours
             cv2.CHAIN_APPROX_SIMPLE  # Compress horizontal/vertical segments
@@ -96,9 +103,9 @@ class ContourExtractor:
             # Calculate area
             area = cv2.contourArea(cv_contour)
 
-            # Filter by minimum area (but keep long thin lines with many points)
-            # A contour must have sufficient area OR be a long line (20+ points)
-            if area < self.min_area and len(cv_contour) < 20:
+            # Filter by minimum area (but keep long thin lines with enough points)
+            # A contour must have sufficient area OR be a long line
+            if area < self.min_area and len(cv_contour) < self.min_contour_points:
                 continue
 
             # Simplify contour

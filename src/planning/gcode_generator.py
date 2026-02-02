@@ -26,6 +26,8 @@ class DrawingBounds:
     z_down: float = 0.0
     feedrate: int = 2000
     travel_feedrate: int = 3000
+    flip_x: bool = True   # Mirror horizontally (fixes camera mirror effect)
+    flip_y: bool = False  # Mirror vertically
 
 
 class GCodeGenerator:
@@ -85,9 +87,12 @@ class GCodeGenerator:
 
         # Generate drawing commands for each contour
         total_points = sum(len(c.points) for c in contours)
-        logger.info(f"Generating GCode for {len(contours)} contours, {total_points} points")
+        total_contours = len(contours)
+        logger.info(f"Generating GCode for {total_contours} contours, {total_points} points")
 
         for i, contour in enumerate(contours):
+            # Add contour marker comment for progress tracking
+            gcode.append(f";CONTOUR {i + 1}/{total_contours}")
             gcode.extend(self._contour_to_gcode(contour, scale, offset_x, offset_y))
 
         # Add footer
@@ -177,6 +182,15 @@ class GCodeGenerator:
         """Transform a point from source to target coordinates."""
         tx = x * scale + offset_x
         ty = y * scale + offset_y
+
+        # Apply flips (mirror around center of drawing area)
+        if self.bounds.flip_x:
+            center_x = (self.bounds.x_min + self.bounds.x_max) / 2
+            tx = 2 * center_x - tx  # Mirror around center
+
+        if self.bounds.flip_y:
+            center_y = (self.bounds.y_min + self.bounds.y_max) / 2
+            ty = 2 * center_y - ty  # Mirror around center
 
         # Clamp to bounds
         tx = max(self.bounds.x_min, min(self.bounds.x_max, tx))
