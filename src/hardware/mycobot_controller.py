@@ -146,21 +146,27 @@ class MyCobotController:
             actual_angles = self.mc.get_angles()
             logger.info(f"[FACE-TRACK] actual_angles from robot: {actual_angles}")
             if actual_angles and len(actual_angles) == 6:
-                self._current_angles = actual_angles
+                # Smooth: blend actual angles with cached to reduce jitter
+                alpha = 0.3  # Low-pass filter factor (0=ignore actual, 1=fully trust actual)
+                self._current_angles = [
+                    cached * (1 - alpha) + actual * alpha
+                    for cached, actual in zip(self._current_angles, actual_angles)
+                ]
             else:
                 logger.warning(f"[FACE-TRACK] get_angles() returned invalid data, using cached: {self._current_angles}")
 
             # Convert offsets to angle adjustments
             # Pan uses joint 0 (base rotation)
-            # Tilt uses joint 1 (shoulder) - adjust sign based on your setup
-            pan_delta = pan_offset * pan_sensitivity * 100  # Scale to degrees
-            tilt_delta = -tilt_offset * tilt_sensitivity * 100  # Negative because camera up = angle down
+            # Tilt uses joint 1 (shoulder)
+            # Signs flipped: face right-of-center (positive offset) → arm pans left (negative delta)
+            pan_delta = -pan_offset * pan_sensitivity * 100
+            tilt_delta = tilt_offset * tilt_sensitivity * 100
 
             logger.info(f"[FACE-TRACK] offset=({pan_offset:.3f}, {tilt_offset:.3f}) "
                         f"delta=({pan_delta:.2f}, {tilt_delta:.2f}) "
                         f"sensitivity=({pan_sensitivity}, {tilt_sensitivity})")
 
-            # Calculate new angles
+            # Calculate new target angles
             new_angles = self._current_angles.copy()
             new_angles[0] += pan_delta   # Base rotation for pan
             new_angles[1] += tilt_delta  # Shoulder for tilt
