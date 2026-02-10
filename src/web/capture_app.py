@@ -13,12 +13,6 @@ Usage:
 """
 
 import os
-
-# Eventlet monkey patch must happen before all other imports on Heroku
-if os.environ.get('DYNO'):
-    import eventlet
-    eventlet.monkey_patch()
-
 import logging
 import time
 import threading
@@ -44,7 +38,7 @@ app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(hours=8)
 socketio = SocketIO(
     app,
     cors_allowed_origins="*",
-    async_mode='eventlet' if os.environ.get('DYNO') else 'threading',
+    async_mode='gevent' if os.environ.get('DYNO') else 'threading',
     max_http_buffer_size=10 * 1024 * 1024,  # 10MB for photo uploads
     ping_timeout=60,
     ping_interval=25
