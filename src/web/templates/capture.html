@@ -263,9 +263,29 @@
             background: #f39c12;
             color: #fff;
         }
+
+        /* Logo */
+        .logo {
+            position: fixed;
+            top: 30px;
+            left: 30px;
+            z-index: 50;
+            pointer-events: none;
+        }
+
+        .logo img {
+            height: 48px;
+            width: auto;
+            opacity: 0.9;
+        }
     </style>
 </head>
 <body>
+
+    <!-- Logo -->
+    <div class="logo">
+        <img src="{{ url_for('static', filename='logo.png') }}" alt="Logo">
+    </div>
 
     <!-- Connection bar -->
     <div class="connection-bar" id="connectionBar"></div>
@@ -492,7 +512,12 @@
                 progressFill.style.width = '100%';
                 progressText.textContent = '';
                 statusMessage.textContent = 'Portrait complete!';
-                newPhotoBtn.style.display = 'inline-block';
+                // Auto-return to camera after 5 seconds
+                setTimeout(() => {
+                    if (currentScreen === 'status-screen') {
+                        resetForNewPhoto();
+                    }
+                }, 5000);
             }
         });
 
