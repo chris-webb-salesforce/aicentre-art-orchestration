@@ -26,12 +26,13 @@
             display: none;
             flex-direction: column;
         }
-        .screen.active { display: flex; }
+        .screen.active {
+            display: flex;
+            height: 100%;
+        }
 
         /* ---- Camera Screen ---- */
-        #camera-screen {
-            background: #000;
-        }
+        #camera-screen { background: #000; }
 
         .camera-area {
             flex: 1;
@@ -46,7 +47,6 @@
             transform: scaleX(-1);
         }
 
-        /* Head & shoulder silhouette guide */
         .silhouette-guide {
             position: absolute;
             inset: 0;
@@ -116,11 +116,8 @@
             transition: transform 0.1s;
         }
 
-        .capture-btn:active::after {
-            transform: scale(0.9);
-        }
+        .capture-btn:active::after { transform: scale(0.9); }
 
-        /* Captured photo preview */
         #captured-preview {
             position: absolute;
             inset: 0;
@@ -136,7 +133,6 @@
             object-fit: cover;
         }
 
-        /* ---- Review controls (Retake / Submit) ---- */
         .review-controls {
             position: absolute;
             bottom: 0;
@@ -163,19 +159,14 @@
             -webkit-appearance: none;
         }
 
-        .btn-secondary {
-            background: #2a2a4a;
-            color: #ccc;
-        }
+        .btn-secondary { background: #2a2a4a; color: #ccc; }
 
         .btn-primary {
             background: linear-gradient(135deg, #667eea, #764ba2);
             color: #fff;
         }
 
-        .btn:disabled {
-            opacity: 0.4;
-        }
+        .btn:disabled { opacity: 0.4; }
 
         .btn:active:not(:disabled) {
             transform: scale(0.98);
@@ -184,59 +175,217 @@
 
         /* ---- Status Screen ---- */
         #status-screen {
-            background: #1a1a2e;
+            background: #0d0d1a;
             align-items: center;
             justify-content: center;
             text-align: center;
-            padding: 40px;
+            padding: 40px 30px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .status-backdrop {
+            position: absolute;
+            inset: -40px;
+            background-size: cover;
+            background-position: center;
+            filter: blur(40px) brightness(0.25) saturate(1.3);
+            opacity: 0;
+            transition: opacity 1.5s ease;
+        }
+
+        .status-backdrop.visible { opacity: 1; }
+
+        .status-overlay {
+            position: absolute;
+            inset: 0;
+            background: radial-gradient(ellipse at center,
+                rgba(13,13,26,0.5) 0%,
+                rgba(13,13,26,0.85) 70%,
+                rgba(13,13,26,0.95) 100%);
+        }
+
+        .status-content {
+            position: relative;
+            z-index: 2;
+            width: 100%;
+            max-width: 380px;
+        }
+
+        /* Phase steps */
+        .phase-steps {
+            display: flex;
+            align-items: flex-start;
+            justify-content: center;
+            margin-bottom: 52px;
+        }
+
+        .phase-step {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 10px;
+            opacity: 0.25;
+            transition: opacity 0.6s ease;
+        }
+
+        .phase-step.active,
+        .phase-step.done { opacity: 1; }
+
+        .phase-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            border: 2px solid #555;
+            background: transparent;
+            transition: all 0.5s ease;
+        }
+
+        .phase-step.active .phase-dot {
+            border-color: #667eea;
+            background: #667eea;
+            box-shadow: 0 0 16px rgba(102,126,234,0.4);
+        }
+
+        .phase-step.done .phase-dot {
+            border-color: #667eea;
+            background: #667eea;
+        }
+
+        .phase-step span {
+            font-size: 0.65rem;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            color: #666;
+            transition: color 0.5s ease;
+        }
+
+        .phase-step.active span,
+        .phase-step.done span { color: #aaa; }
+
+        .phase-connector {
+            width: 56px;
+            height: 2px;
+            background: #222;
+            margin: 4px 12px 0;
+            position: relative;
+            overflow: hidden;
+            border-radius: 1px;
+        }
+
+        .phase-connector::after {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(90deg, #667eea, #764ba2);
+            transform: scaleX(0);
+            transform-origin: left;
+            transition: transform 0.6s ease;
+        }
+
+        .phase-connector.filled::after { transform: scaleX(1); }
+
+        /* Circular progress */
+        .circular-progress {
+            width: 180px;
+            height: 180px;
+            margin: 0 auto 40px;
+            position: relative;
+        }
+
+        .circular-progress > svg {
+            width: 100%;
+            height: 100%;
+            transform: rotate(-90deg);
+        }
+
+        .progress-bg {
+            fill: none;
+            stroke: rgba(255,255,255,0.04);
+            stroke-width: 3;
+        }
+
+        .progress-ring {
+            fill: none;
+            stroke: url(#progressGradient);
+            stroke-width: 3;
+            stroke-linecap: round;
+            stroke-dasharray: 326.73;
+            stroke-dashoffset: 326.73;
+            transition: stroke-dashoffset 0.8s ease;
+        }
+
+        .progress-center {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .progress-number {
+            font-size: 2.4rem;
+            font-weight: 200;
+            color: #fff;
+            font-variant-numeric: tabular-nums;
+            line-height: 1;
+            letter-spacing: -1px;
+        }
+
+        .progress-unit {
+            font-size: 0.7rem;
+            color: #667eea;
+            text-transform: uppercase;
+            letter-spacing: 3px;
+            margin-top: 6px;
+        }
+
+        /* Complete state */
+        .complete-icon {
+            display: none;
+        }
+
+        .complete-icon.show {
+            display: block;
+            animation: completePop 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+
+        .complete-icon svg {
+            width: 56px;
+            height: 56px;
+        }
+
+        .complete-check-path {
+            stroke-dasharray: 40;
+            stroke-dashoffset: 40;
+        }
+
+        .complete-icon.show .complete-check-path {
+            animation: drawCheck 0.4s 0.3s ease forwards;
+        }
+
+        @keyframes completePop {
+            0% { transform: scale(0); opacity: 0; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+
+        @keyframes drawCheck {
+            to { stroke-dashoffset: 0; }
         }
 
         .status-message {
-            font-size: 1.3rem;
+            font-size: 1.1rem;
             font-weight: 300;
-            margin-bottom: 16px;
-            min-height: 40px;
-        }
-
-        .progress-bar {
-            width: 80%;
-            max-width: 300px;
-            height: 6px;
-            background: #333;
-            border-radius: 3px;
-            overflow: hidden;
-            margin: 0 auto 16px;
-        }
-
-        .progress-fill {
-            height: 100%;
-            background: linear-gradient(90deg, #667eea, #764ba2);
-            width: 0%;
-            transition: width 0.5s ease;
-        }
-
-        .progress-text {
-            font-size: 0.85rem;
-            color: #888;
+            color: rgba(255,255,255,0.8);
+            letter-spacing: 0.5px;
+            min-height: 28px;
+            transition: opacity 0.3s ease;
+            margin-bottom: 0;
         }
 
         .status-action {
-            margin-top: 30px;
-        }
-
-        /* Spinner animation */
-        .spinner {
-            width: 40px;
-            height: 40px;
-            border: 3px solid #333;
-            border-top-color: #667eea;
-            border-radius: 50%;
-            animation: spin 1s linear infinite;
-            margin: 0 auto 24px;
-        }
-
-        @keyframes spin {
-            to { transform: rotate(360deg); }
+            margin-top: 28px;
         }
 
         /* Connection indicator */
@@ -297,11 +446,8 @@
 
             <div class="silhouette-guide" id="silhouetteGuide">
                 <svg viewBox="0 0 200 260" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <!-- Head -->
                     <ellipse cx="100" cy="80" rx="48" ry="58" stroke="white" stroke-width="2" stroke-dasharray="6 4"/>
-                    <!-- Neck -->
                     <path d="M80 135 L80 155 M120 135 L120 155" stroke="white" stroke-width="2" stroke-dasharray="6 4"/>
-                    <!-- Shoulders -->
                     <path d="M80 155 Q60 155 30 175 Q10 185 5 210 L5 260 M120 155 Q140 155 170 175 Q190 185 195 210 L195 260"
                           stroke="white" stroke-width="2" stroke-dasharray="6 4"/>
                 </svg>
@@ -315,12 +461,10 @@
                 <img id="preview-img" src="" alt="Captured photo">
             </div>
 
-            <!-- Capture button (shown before photo taken) -->
             <div class="camera-controls" id="captureControls">
                 <button class="capture-btn" id="captureBtn" aria-label="Take photo"></button>
             </div>
 
-            <!-- Retake / Submit buttons (shown after photo taken) -->
             <div class="review-controls" id="reviewControls">
                 <button class="btn btn-secondary" id="retakeBtn">Retake</button>
                 <button class="btn btn-primary" id="submitBtn">Submit</button>
@@ -330,13 +474,57 @@
 
     <!-- Screen 2: Status -->
     <div class="screen" id="status-screen">
-        <div>
-            <div class="spinner" id="statusSpinner"></div>
-            <div class="status-message" id="statusMessage">Sending to robot...</div>
-            <div class="progress-bar" id="progressBar" style="display: none;">
-                <div class="progress-fill" id="progressFill"></div>
+        <div class="status-backdrop" id="statusBackdrop"></div>
+        <div class="status-overlay"></div>
+
+        <div class="status-content">
+            <!-- Phase steps -->
+            <div class="phase-steps">
+                <div class="phase-step active" id="phaseSend">
+                    <div class="phase-dot"></div>
+                    <span>Send</span>
+                </div>
+                <div class="phase-connector" id="connector1"></div>
+                <div class="phase-step" id="phaseGenerate">
+                    <div class="phase-dot"></div>
+                    <span>Generate</span>
+                </div>
+                <div class="phase-connector" id="connector2"></div>
+                <div class="phase-step" id="phaseDraw">
+                    <div class="phase-dot"></div>
+                    <span>Draw</span>
+                </div>
             </div>
-            <div class="progress-text" id="progressText"></div>
+
+            <!-- Circular progress -->
+            <div class="circular-progress">
+                <svg viewBox="0 0 120 120">
+                    <defs>
+                        <linearGradient id="progressGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+                            <stop offset="0%" stop-color="#667eea"/>
+                            <stop offset="100%" stop-color="#9b6dff"/>
+                        </linearGradient>
+                    </defs>
+                    <circle class="progress-bg" cx="60" cy="60" r="52"/>
+                    <circle class="progress-ring" cx="60" cy="60" r="52" id="progressRing"/>
+                </svg>
+                <div class="progress-center">
+                    <div class="complete-icon" id="completeIcon">
+                        <svg viewBox="0 0 56 56" fill="none">
+                            <circle cx="28" cy="28" r="26" stroke="#667eea" stroke-width="2" opacity="0.3"/>
+                            <path class="complete-check-path" d="M17 28 L24 35 L39 20"
+                                  stroke="#667eea" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+                        </svg>
+                    </div>
+                    <div id="progressCenter">
+                        <div class="progress-number" id="progressNumber">0</div>
+                        <div class="progress-unit">percent</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="status-message" id="statusMessage">Sending to robot...</div>
+
             <div class="status-action">
                 <button class="btn btn-primary" id="newPhotoBtn" style="display: none;">Take Another Photo</button>
             </div>
@@ -353,6 +541,7 @@
         let capturedPhotoData = null;
         let cameraStream = null;
         let robotConnected = false;
+        const RING_CIRCUMFERENCE = 2 * Math.PI * 52;
 
         // --- Elements ---
         const video = document.getElementById('camera-video');
@@ -366,17 +555,71 @@
         const submitBtn = document.getElementById('submitBtn');
         const newPhotoBtn = document.getElementById('newPhotoBtn');
         const statusMessage = document.getElementById('statusMessage');
-        const progressBar = document.getElementById('progressBar');
-        const progressFill = document.getElementById('progressFill');
-        const progressText = document.getElementById('progressText');
-        const statusSpinner = document.getElementById('statusSpinner');
+        const progressRing = document.getElementById('progressRing');
+        const progressNumber = document.getElementById('progressNumber');
+        const progressCenter = document.getElementById('progressCenter');
+        const completeIcon = document.getElementById('completeIcon');
         const connectionBar = document.getElementById('connectionBar');
+        const statusBackdrop = document.getElementById('statusBackdrop');
+
+        const phases = {
+            send: document.getElementById('phaseSend'),
+            generate: document.getElementById('phaseGenerate'),
+            draw: document.getElementById('phaseDraw'),
+        };
+        const connectors = [
+            document.getElementById('connector1'),
+            document.getElementById('connector2'),
+        ];
 
         // --- Screen management ---
         function showScreen(screenId) {
             document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
             document.getElementById(screenId).classList.add('active');
             currentScreen = screenId;
+        }
+
+        // --- Progress ring ---
+        function setProgress(percent) {
+            const offset = RING_CIRCUMFERENCE - (percent / 100) * RING_CIRCUMFERENCE;
+            progressRing.style.strokeDashoffset = offset;
+            progressNumber.textContent = Math.round(percent);
+        }
+
+        // --- Phase management ---
+        function setPhase(phase) {
+            Object.values(phases).forEach(el => el.classList.remove('active', 'done'));
+            connectors.forEach(c => c.classList.remove('filled'));
+
+            if (phase === 'send' || phase === 'queued') {
+                phases.send.classList.add('active');
+            } else if (phase === 'processing') {
+                phases.send.classList.add('done');
+                connectors[0].classList.add('filled');
+                phases.generate.classList.add('active');
+            } else if (phase === 'drawing') {
+                phases.send.classList.add('done');
+                phases.generate.classList.add('done');
+                connectors[0].classList.add('filled');
+                connectors[1].classList.add('filled');
+                phases.draw.classList.add('active');
+            } else if (phase === 'complete') {
+                phases.send.classList.add('done');
+                phases.generate.classList.add('done');
+                phases.draw.classList.add('done');
+                connectors[0].classList.add('filled');
+                connectors[1].classList.add('filled');
+            }
+        }
+
+        function resetStatusScreen() {
+            setProgress(0);
+            setPhase('send');
+            progressCenter.style.display = '';
+            completeIcon.classList.remove('show');
+            newPhotoBtn.style.display = 'none';
+            statusBackdrop.classList.remove('visible');
+            statusMessage.textContent = 'Sending to robot...';
         }
 
         // --- Camera ---
@@ -409,7 +652,6 @@
             const w = settings.width || video.videoWidth;
             const h = settings.height || video.videoHeight;
 
-            // Limit to 1024 on longest side
             const maxDim = 1024;
             let cw = w, ch = h;
             if (w > h && w > maxDim) { cw = maxDim; ch = Math.round(h * maxDim / w); }
@@ -419,7 +661,6 @@
             captureCanvas.height = ch;
             const ctx = captureCanvas.getContext('2d');
 
-            // Mirror horizontally (front camera)
             ctx.save();
             ctx.translate(cw, 0);
             ctx.scale(-1, 1);
@@ -428,7 +669,6 @@
 
             capturedPhotoData = captureCanvas.toDataURL('image/jpeg', 0.85);
 
-            // Show preview and swap to review controls
             previewImg.src = capturedPhotoData;
             previewEl.classList.add('show');
             captureControls.style.display = 'none';
@@ -446,12 +686,13 @@
         function submitPhoto() {
             if (!capturedPhotoData) return;
 
+            resetStatusScreen();
+
+            // Set captured photo as blurred backdrop
+            statusBackdrop.style.backgroundImage = `url(${capturedPhotoData})`;
+            requestAnimationFrame(() => statusBackdrop.classList.add('visible'));
+
             showScreen('status-screen');
-            statusMessage.textContent = 'Sending to robot...';
-            statusSpinner.style.display = 'block';
-            progressBar.style.display = 'none';
-            progressText.textContent = '';
-            newPhotoBtn.style.display = 'none';
 
             socket.emit('submit_photo', {
                 photo: capturedPhotoData,
@@ -484,35 +725,33 @@
             robotConnected = data.robot_connected;
             updateConnectionUI();
 
-            // If system is busy, show status screen
             if (data.status !== 'idle' && currentScreen === 'camera-screen') {
+                resetStatusScreen();
                 showScreen('status-screen');
                 statusMessage.textContent = data.message || 'Processing...';
-                if (data.percent > 0) {
-                    progressBar.style.display = 'block';
-                    progressFill.style.width = data.percent + '%';
-                }
+                if (data.percent > 0) setProgress(data.percent);
+                setPhase(data.status);
             }
         });
 
         socket.on('status', (data) => {
-            if (currentScreen !== 'status-screen') showScreen('status-screen');
-
-            statusMessage.textContent = data.message || 'Processing...';
-
-            if (data.status === 'drawing' || data.percent > 0) {
-                progressBar.style.display = 'block';
-                progressFill.style.width = data.percent + '%';
-                progressText.textContent = data.percent + '%';
+            if (currentScreen !== 'status-screen') {
+                resetStatusScreen();
+                showScreen('status-screen');
             }
 
+            statusMessage.textContent = data.message || 'Processing...';
+            setPhase(data.status);
+
+            if (data.percent > 0) setProgress(data.percent);
+
             if (data.status === 'complete') {
-                statusSpinner.style.display = 'none';
-                progressBar.style.display = 'block';
-                progressFill.style.width = '100%';
-                progressText.textContent = '';
+                setProgress(100);
+                setPhase('complete');
+                progressCenter.style.display = 'none';
+                completeIcon.classList.add('show');
                 statusMessage.textContent = 'Portrait complete!';
-                // Auto-return to camera after 5 seconds
+
                 setTimeout(() => {
                     if (currentScreen === 'status-screen') {
                         resetForNewPhoto();
@@ -523,7 +762,6 @@
 
         socket.on('error', (data) => {
             if (currentScreen === 'status-screen') {
-                statusSpinner.style.display = 'none';
                 statusMessage.textContent = data.message || 'An error occurred';
                 newPhotoBtn.style.display = 'inline-block';
             } else {
