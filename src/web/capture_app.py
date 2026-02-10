@@ -13,6 +13,12 @@ Usage:
 """
 
 import os
+
+# Eventlet monkey patch must happen before all other imports on Heroku
+if os.environ.get('DYNO'):
+    import eventlet
+    eventlet.monkey_patch()
+
 import logging
 import time
 import threading
