@@ -26,3 +26,10 @@ Pillow>=9.0.0
 # Web visualization
 flask>=2.0.0
 flask-socketio>=5.0.0
+
+# Heroku deployment
+gunicorn>=20.1.0
+eventlet>=0.33.0
+
+# Remote client (local machine connects to Heroku)
+python-socketio[client]>=5.0.0

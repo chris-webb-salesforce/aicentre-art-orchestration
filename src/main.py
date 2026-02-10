@@ -23,7 +23,7 @@ import logging
 import argparse
 from datetime import datetime
 from pathlib import Path
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Callable
 
 # Load environment variables from .env file
 from dotenv import load_dotenv
@@ -63,7 +63,8 @@ class PortraitSystem:
     track face -> capture -> convert to line art -> extract paths -> draw
     """
 
-    def __init__(self, config: Config, use_mock_ai: bool = False, enable_personality: bool = True):
+    def __init__(self, config: Config, use_mock_ai: bool = False,
+                 enable_personality: bool = True, remote_mode: bool = False):
         """
         Initialize the portrait system.
 
@@ -71,10 +72,12 @@ class PortraitSystem:
             config: System configuration
             use_mock_ai: If True, use mock AI client (no OpenAI API calls)
             enable_personality: If True, enable personality animations
+            remote_mode: If True, skip camera/MyCobot/face tracker (DexArm only)
         """
         self.config = config
         self.use_mock_ai = use_mock_ai
-        self.enable_personality = enable_personality
+        self.enable_personality = enable_personality and not remote_mode
+        self.remote_mode = remote_mode
 
         # Initialize components (will be fully setup in initialize())
         self.camera: Optional[CameraController] = None
@@ -104,38 +107,41 @@ class PortraitSystem:
         self._output_dir.mkdir(parents=True, exist_ok=True)
         logger.info(f"Output directory: {self._output_dir}")
 
-        # Initialize camera
-        logger.info("Initializing camera...")
-        self.camera = CameraController(
-            index=self.config.camera.index,
-            width=self.config.camera.width,
-            height=self.config.camera.height
-        )
-        if not self.camera.initialize():
-            logger.error("Failed to initialize camera")
-            return False
+        if not self.remote_mode:
+            # Initialize camera
+            logger.info("Initializing camera...")
+            self.camera = CameraController(
+                index=self.config.camera.index,
+                width=self.config.camera.width,
+                height=self.config.camera.height
+            )
+            if not self.camera.initialize():
+                logger.error("Failed to initialize camera")
+                return False
 
-        # Initialize face tracker
-        logger.info("Initializing face tracker...")
-        self.face_tracker = FaceTracker(
-            min_face_size=self.config.face_tracking.min_face_size
-        )
-        if not self.face_tracker.initialize():
-            logger.error("Failed to initialize face tracker")
-            return False
+            # Initialize face tracker
+            logger.info("Initializing face tracker...")
+            self.face_tracker = FaceTracker(
+                min_face_size=self.config.face_tracking.min_face_size
+            )
+            if not self.face_tracker.initialize():
+                logger.error("Failed to initialize face tracker")
+                return False
 
-        # Initialize MyCobot
-        logger.info("Initializing MyCobot320...")
-        self.mycobot = MyCobotController(
-            port=self.config.mycobot.port,
-            baud_rate=self.config.mycobot.baud_rate,
-            home_angles=self.config.mycobot.home_angles,
-            tracking_angles=self.config.mycobot.tracking_angles,
-            speed=self.config.mycobot.speed
-        )
-        if not self.mycobot.initialize():
-            logger.error("Failed to initialize MyCobot")
-            return False
+            # Initialize MyCobot
+            logger.info("Initializing MyCobot320...")
+            self.mycobot = MyCobotController(
+                port=self.config.mycobot.port,
+                baud_rate=self.config.mycobot.baud_rate,
+                home_angles=self.config.mycobot.home_angles,
+                tracking_angles=self.config.mycobot.tracking_angles,
+                speed=self.config.mycobot.speed
+            )
+            if not self.mycobot.initialize():
+                logger.error("Failed to initialize MyCobot")
+                return False
+        else:
+            logger.info("Remote mode: skipping camera, face tracker, and MyCobot")
 
         # Initialize DexArm
         logger.info("Initializing DexArm...")
@@ -227,7 +233,8 @@ class PortraitSystem:
 
         # Move robots to starting positions
         logger.info("Moving robots to starting positions...")
-        self.mycobot.go_home()
+        if self.mycobot:
+            self.mycobot.go_home()
         self.dexarm.go_to_safe_position(
             self.config.drawing.safe_position.get('x', 0),
             self.config.drawing.safe_position.get('y', 300),
@@ -440,6 +447,164 @@ class PortraitSystem:
             if self.personality:
                 self.personality.stop_all()
 
+    def run_pipeline_from_image(
+        self,
+        image: np.ndarray,
+        style_name: str = "minimal",
+        status_callback: Optional[Callable] = None
+    ) -> bool:
+        """
+        Run the portrait pipeline from a pre-captured image (for remote submissions).
+
+        Skips face tracking/camera capture. Applies style-specific AI prompt and
+        contour extraction settings.
+
+        Args:
+            image: BGR image (portrait photo)
+            style_name: Art style name (must match a key in config.openai.styles)
+            status_callback: Optional callback(status, message, percent) for progress
+
+        Returns:
+            True if portrait completed successfully.
+        """
+        def notify(status, message, percent=0):
+            if status_callback:
+                status_callback(status, message, percent)
+            if status == 'error':
+                logger.error(f"[{status}] {message}")
+            else:
+                logger.info(f"[{status}] {message}")
+
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        session_dir = self._output_dir / timestamp
+        session_dir.mkdir(parents=True, exist_ok=True)
+
+        # Apply style-specific settings
+        style_config = self.config.openai.styles.get(style_name)
+        original_prompt = self.openai_client.prompt
+
+        if not style_config:
+            logger.warning(f"Style '{style_name}' not found in config, using defaults")
+        elif style_config.prompt:
+            self.openai_client.prompt = style_config.prompt
+            logger.info(f"Using style '{style_name}': {style_config.name}")
+
+        # Apply style-specific contour settings
+        original_extractor = self.contour_extractor
+        if style_config and style_config.contour:
+            sc = style_config.contour
+            method = sc.method or self.config.contour.method
+            if method.lower() == "canny":
+                self.contour_extractor = ContourExtractor(
+                    canny_low=sc.canny_low or self.config.contour.canny_low,
+                    canny_high=sc.canny_high or self.config.contour.canny_high,
+                    min_area=sc.min_area or self.config.contour.min_area,
+                    simplify_epsilon=sc.simplify_epsilon if sc.simplify_epsilon is not None else self.config.contour.simplify_epsilon,
+                    blur_kernel=sc.blur_kernel or self.config.contour.blur_kernel,
+                    min_contour_points=sc.min_contour_points or self.config.contour.min_contour_points,
+                )
+            else:
+                adaptive_config = AdaptiveExtractorConfig(
+                    method=method,
+                    canny_low=sc.canny_low or self.config.contour.canny_low,
+                    canny_high=sc.canny_high or self.config.contour.canny_high,
+                    min_area=sc.min_area or self.config.contour.min_area,
+                    simplify_epsilon=sc.simplify_epsilon if sc.simplify_epsilon is not None else self.config.contour.simplify_epsilon,
+                    blur_kernel=sc.blur_kernel or self.config.contour.blur_kernel,
+                    min_contour_points=sc.min_contour_points or self.config.contour.min_contour_points,
+                    thickness_threshold=sc.thickness_threshold or self.config.contour.thickness_threshold,
+                    density_threshold=sc.density_threshold or self.config.contour.density_threshold,
+                    skeleton_simplify=sc.skeleton_simplify or self.config.contour.skeleton_simplify,
+                )
+                self.contour_extractor = AdaptiveContourExtractor(adaptive_config)
+
+        try:
+            # Save portrait
+            notify('processing', 'Saving portrait...', 5)
+            portrait_path = session_dir / "portrait.jpg"
+            cv2.imwrite(str(portrait_path), image)
+
+            # Stage 2: Generate line art
+            notify('processing', 'Generating line art... (this may take 30s)', 10)
+            lineart_path = session_dir / "lineart.png"
+            line_art = self.openai_client.generate_line_art(image, str(lineart_path))
+
+            if line_art is None:
+                notify('error', 'Failed to generate line art')
+                return False
+
+            # Stage 3: Extract contours
+            notify('processing', 'Extracting drawing paths...', 40)
+            contours = self.contour_extractor.extract(line_art)
+            if not contours:
+                notify('error', 'No contours extracted')
+                return False
+
+            if self.config.path_optimization.enabled:
+                start_pos = (
+                    (self.config.drawing.x_min + self.config.drawing.x_max) / 2,
+                    self.config.drawing.y_min
+                )
+                contours = self.contour_extractor.optimize_order(contours, start_pos)
+
+            # Stage 4: Generate GCode
+            notify('processing', 'Generating drawing instructions...', 50)
+            image_bounds = self.contour_extractor.get_bounds(contours)
+            gcode = self.gcode_generator.generate(contours, image_bounds)
+
+            if not gcode:
+                notify('error', 'Failed to generate drawing instructions')
+                return False
+
+            gcode_path = session_dir / "drawing.gcode"
+            self.gcode_generator.save_to_file(gcode, str(gcode_path))
+
+            est_time = self.gcode_generator.estimate_drawing_time(gcode)
+            notify('drawing', f'Drawing portrait... (~{est_time:.0f}s)', 55)
+
+            # Stage 5: Draw
+            if self.personality:
+                self.personality.start_drawing_mode()
+
+            start_time = time.time()
+
+            def progress_cb(current, total, _position, contour=None, total_contours=None):
+                if total > 0:
+                    pct = 55 + int(45 * current / total)
+                    elapsed = time.time() - start_time
+                    remaining = (elapsed * total / current - elapsed) if current > 0 else 0
+                    msg = f'Drawing... {remaining:.0f}s remaining'
+                    if contour and total_contours:
+                        msg = f'Drawing line {contour}/{total_contours}'
+                    notify('drawing', msg, pct)
+
+            success = self.dexarm.stream_gcode(gcode, progress_cb)
+
+            if self.personality:
+                self.personality.stop_drawing_mode()
+
+            if not success:
+                notify('error', 'Drawing failed')
+                return False
+
+            notify('complete', 'Portrait complete!', 100)
+            logger.info(f"Portrait complete! Session: {session_dir}")
+            return True
+
+        except Exception as e:
+            logger.error(f"Pipeline error: {e}")
+            import traceback
+            traceback.print_exc()
+            notify('error', f'Pipeline error: {str(e)}')
+            return False
+
+        finally:
+            # Restore original settings
+            self.openai_client.prompt = original_prompt
+            self.contour_extractor = original_extractor
+            if self.personality:
+                self.personality.stop_all()
+
     def _track_and_capture(self) -> Optional[np.ndarray]:
         """
         Track face and capture image when centered.
@@ -510,10 +675,7 @@ class PortraitSystem:
                 est_total = elapsed * total / current
                 remaining = est_total - elapsed
                 if contour and total_contours:
-                    logger.info(
-                        f"Drawing contour {contour}/{total_contours} ({100*contour/total_contours:.0f}%) "
-                        f"- {remaining:.0f}s remaining"
-                    )
+                    logger.info(f"Drawing Line {contour}/{total_contours} ({100*contour/total_contours:.0f}%) ")
                 else:
                     logger.info(
                         f"Drawing progress: {current}/{total} ({100*current/total:.1f}%) "

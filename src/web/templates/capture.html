@@ -1,0 +1,531 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0">
+    <title>Portrait Studio</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.5.4/socket.io.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        html, body {
+            height: 100%;
+            overflow: hidden;
+            background: #1a1a2e;
+            color: #eee;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            -webkit-user-select: none;
+            user-select: none;
+            -webkit-touch-callout: none;
+        }
+
+        /* ---- Screens ---- */
+        .screen {
+            position: absolute;
+            inset: 0;
+            display: none;
+            flex-direction: column;
+        }
+        .screen.active { display: flex; }
+
+        /* ---- Camera Screen ---- */
+        #camera-screen {
+            background: #000;
+        }
+
+        .camera-area {
+            flex: 1;
+            position: relative;
+            overflow: hidden;
+        }
+
+        #camera-video {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            transform: scaleX(-1);
+        }
+
+        /* Head & shoulder silhouette guide */
+        .silhouette-guide {
+            position: absolute;
+            inset: 0;
+            pointer-events: none;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .silhouette-guide svg {
+            width: 65%;
+            max-width: 320px;
+            height: auto;
+            opacity: 0.35;
+        }
+
+        .camera-error {
+            position: absolute;
+            inset: 0;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            padding: 40px;
+            background: #1a1a2e;
+        }
+
+        .camera-error.show { display: flex; }
+
+        .camera-error p {
+            font-size: 1.1rem;
+            color: #aaa;
+            line-height: 1.6;
+        }
+
+        .camera-controls {
+            position: absolute;
+            bottom: 0;
+            width: 100%;
+            padding: 20px;
+            padding-bottom: max(20px, env(safe-area-inset-bottom));
+            background: rgba(0,0,0,0.7);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 24px;
+            z-index: 10;
+        }
+
+        .capture-btn {
+            width: 72px;
+            height: 72px;
+            border-radius: 50%;
+            border: 4px solid #fff;
+            background: transparent;
+            cursor: pointer;
+            position: relative;
+            -webkit-appearance: none;
+        }
+
+        .capture-btn::after {
+            content: '';
+            position: absolute;
+            inset: 4px;
+            border-radius: 50%;
+            background: #fff;
+            transition: transform 0.1s;
+        }
+
+        .capture-btn:active::after {
+            transform: scale(0.9);
+        }
+
+        /* Captured photo preview */
+        #captured-preview {
+            position: absolute;
+            inset: 0;
+            display: none;
+            z-index: 5;
+        }
+
+        #captured-preview.show { display: block; }
+
+        #captured-preview img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        /* ---- Review controls (Retake / Submit) ---- */
+        .review-controls {
+            position: absolute;
+            bottom: 0;
+            width: 100%;
+            padding: 16px 20px;
+            padding-bottom: max(16px, env(safe-area-inset-bottom));
+            background: rgba(0,0,0,0.7);
+            display: none;
+            gap: 12px;
+            z-index: 10;
+        }
+
+        .review-controls.show { display: flex; }
+
+        .btn {
+            flex: 1;
+            font-size: 16px;
+            padding: 14px;
+            border: none;
+            border-radius: 12px;
+            cursor: pointer;
+            font-weight: 500;
+            letter-spacing: 0.5px;
+            -webkit-appearance: none;
+        }
+
+        .btn-secondary {
+            background: #2a2a4a;
+            color: #ccc;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: #fff;
+        }
+
+        .btn:disabled {
+            opacity: 0.4;
+        }
+
+        .btn:active:not(:disabled) {
+            transform: scale(0.98);
+            opacity: 0.9;
+        }
+
+        /* ---- Status Screen ---- */
+        #status-screen {
+            background: #1a1a2e;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            padding: 40px;
+        }
+
+        .status-message {
+            font-size: 1.3rem;
+            font-weight: 300;
+            margin-bottom: 16px;
+            min-height: 40px;
+        }
+
+        .progress-bar {
+            width: 80%;
+            max-width: 300px;
+            height: 6px;
+            background: #333;
+            border-radius: 3px;
+            overflow: hidden;
+            margin: 0 auto 16px;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #667eea, #764ba2);
+            width: 0%;
+            transition: width 0.5s ease;
+        }
+
+        .progress-text {
+            font-size: 0.85rem;
+            color: #888;
+        }
+
+        .status-action {
+            margin-top: 30px;
+        }
+
+        /* Spinner animation */
+        .spinner {
+            width: 40px;
+            height: 40px;
+            border: 3px solid #333;
+            border-top-color: #667eea;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 24px;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        /* Connection indicator */
+        .connection-bar {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            padding: 6px;
+            text-align: center;
+            font-size: 0.75rem;
+            z-index: 100;
+            display: none;
+        }
+
+        .connection-bar.disconnected {
+            display: block;
+            background: #e74c3c;
+            color: #fff;
+        }
+
+        .connection-bar.no-robot {
+            display: block;
+            background: #f39c12;
+            color: #fff;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Connection bar -->
+    <div class="connection-bar" id="connectionBar"></div>
+
+    <!-- Screen 1: Camera -->
+    <div class="screen active" id="camera-screen">
+        <div class="camera-area">
+            <video id="camera-video" playsinline autoplay muted></video>
+
+            <div class="silhouette-guide" id="silhouetteGuide">
+                <svg viewBox="0 0 200 260" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <!-- Head -->
+                    <ellipse cx="100" cy="80" rx="48" ry="58" stroke="white" stroke-width="2" stroke-dasharray="6 4"/>
+                    <!-- Neck -->
+                    <path d="M80 135 L80 155 M120 135 L120 155" stroke="white" stroke-width="2" stroke-dasharray="6 4"/>
+                    <!-- Shoulders -->
+                    <path d="M80 155 Q60 155 30 175 Q10 185 5 210 L5 260 M120 155 Q140 155 170 175 Q190 185 195 210 L195 260"
+                          stroke="white" stroke-width="2" stroke-dasharray="6 4"/>
+                </svg>
+            </div>
+
+            <div class="camera-error" id="cameraError">
+                <p>Unable to access camera.<br>Please allow camera permissions and reload the page.</p>
+            </div>
+
+            <div id="captured-preview">
+                <img id="preview-img" src="" alt="Captured photo">
+            </div>
+
+            <!-- Capture button (shown before photo taken) -->
+            <div class="camera-controls" id="captureControls">
+                <button class="capture-btn" id="captureBtn" aria-label="Take photo"></button>
+            </div>
+
+            <!-- Retake / Submit buttons (shown after photo taken) -->
+            <div class="review-controls" id="reviewControls">
+                <button class="btn btn-secondary" id="retakeBtn">Retake</button>
+                <button class="btn btn-primary" id="submitBtn">Submit</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Screen 2: Status -->
+    <div class="screen" id="status-screen">
+        <div>
+            <div class="spinner" id="statusSpinner"></div>
+            <div class="status-message" id="statusMessage">Sending to robot...</div>
+            <div class="progress-bar" id="progressBar" style="display: none;">
+                <div class="progress-fill" id="progressFill"></div>
+            </div>
+            <div class="progress-text" id="progressText"></div>
+            <div class="status-action">
+                <button class="btn btn-primary" id="newPhotoBtn" style="display: none;">Take Another Photo</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Hidden canvas for photo capture -->
+    <canvas id="captureCanvas" style="display: none;"></canvas>
+
+    <script>
+        // --- State ---
+        let currentScreen = 'camera-screen';
+        const selectedStyle = 'simple';
+        let capturedPhotoData = null;
+        let cameraStream = null;
+        let robotConnected = false;
+
+        // --- Elements ---
+        const video = document.getElementById('camera-video');
+        const captureBtn = document.getElementById('captureBtn');
+        const captureControls = document.getElementById('captureControls');
+        const reviewControls = document.getElementById('reviewControls');
+        const captureCanvas = document.getElementById('captureCanvas');
+        const previewEl = document.getElementById('captured-preview');
+        const previewImg = document.getElementById('preview-img');
+        const retakeBtn = document.getElementById('retakeBtn');
+        const submitBtn = document.getElementById('submitBtn');
+        const newPhotoBtn = document.getElementById('newPhotoBtn');
+        const statusMessage = document.getElementById('statusMessage');
+        const progressBar = document.getElementById('progressBar');
+        const progressFill = document.getElementById('progressFill');
+        const progressText = document.getElementById('progressText');
+        const statusSpinner = document.getElementById('statusSpinner');
+        const connectionBar = document.getElementById('connectionBar');
+
+        // --- Screen management ---
+        function showScreen(screenId) {
+            document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+            document.getElementById(screenId).classList.add('active');
+            currentScreen = screenId;
+        }
+
+        // --- Camera ---
+        async function startCamera() {
+            try {
+                const constraints = {
+                    video: {
+                        facingMode: 'user',
+                        width: { ideal: 1280 },
+                        height: { ideal: 720 }
+                    },
+                    audio: false
+                };
+
+                cameraStream = await navigator.mediaDevices.getUserMedia(constraints);
+                video.srcObject = cameraStream;
+                await video.play();
+                document.getElementById('cameraError').classList.remove('show');
+            } catch (err) {
+                console.error('Camera error:', err);
+                document.getElementById('cameraError').classList.add('show');
+            }
+        }
+
+        function capturePhoto() {
+            if (!cameraStream) return;
+
+            const track = cameraStream.getVideoTracks()[0];
+            const settings = track.getSettings();
+            const w = settings.width || video.videoWidth;
+            const h = settings.height || video.videoHeight;
+
+            // Limit to 1024 on longest side
+            const maxDim = 1024;
+            let cw = w, ch = h;
+            if (w > h && w > maxDim) { cw = maxDim; ch = Math.round(h * maxDim / w); }
+            else if (h > maxDim) { ch = maxDim; cw = Math.round(w * maxDim / h); }
+
+            captureCanvas.width = cw;
+            captureCanvas.height = ch;
+            const ctx = captureCanvas.getContext('2d');
+
+            // Mirror horizontally (front camera)
+            ctx.save();
+            ctx.translate(cw, 0);
+            ctx.scale(-1, 1);
+            ctx.drawImage(video, 0, 0, cw, ch);
+            ctx.restore();
+
+            capturedPhotoData = captureCanvas.toDataURL('image/jpeg', 0.85);
+
+            // Show preview and swap to review controls
+            previewImg.src = capturedPhotoData;
+            previewEl.classList.add('show');
+            captureControls.style.display = 'none';
+            reviewControls.classList.add('show');
+        }
+
+        function retakePhoto() {
+            capturedPhotoData = null;
+            previewEl.classList.remove('show');
+            reviewControls.classList.remove('show');
+            captureControls.style.display = 'flex';
+        }
+
+        // --- Submission ---
+        function submitPhoto() {
+            if (!capturedPhotoData) return;
+
+            showScreen('status-screen');
+            statusMessage.textContent = 'Sending to robot...';
+            statusSpinner.style.display = 'block';
+            progressBar.style.display = 'none';
+            progressText.textContent = '';
+            newPhotoBtn.style.display = 'none';
+
+            socket.emit('submit_photo', {
+                photo: capturedPhotoData,
+                style: selectedStyle
+            });
+        }
+
+        function resetForNewPhoto() {
+            capturedPhotoData = null;
+            previewEl.classList.remove('show');
+            reviewControls.classList.remove('show');
+            captureControls.style.display = 'flex';
+            showScreen('camera-screen');
+        }
+
+        // --- SocketIO ---
+        const socket = io('/capture');
+
+        socket.on('connect', () => {
+            connectionBar.className = 'connection-bar';
+            connectionBar.textContent = '';
+        });
+
+        socket.on('disconnect', () => {
+            connectionBar.className = 'connection-bar disconnected';
+            connectionBar.textContent = 'Connection lost - reconnecting...';
+        });
+
+        socket.on('state', (data) => {
+            robotConnected = data.robot_connected;
+            updateConnectionUI();
+
+            // If system is busy, show status screen
+            if (data.status !== 'idle' && currentScreen === 'camera-screen') {
+                showScreen('status-screen');
+                statusMessage.textContent = data.message || 'Processing...';
+                if (data.percent > 0) {
+                    progressBar.style.display = 'block';
+                    progressFill.style.width = data.percent + '%';
+                }
+            }
+        });
+
+        socket.on('status', (data) => {
+            if (currentScreen !== 'status-screen') showScreen('status-screen');
+
+            statusMessage.textContent = data.message || 'Processing...';
+
+            if (data.status === 'drawing' || data.percent > 0) {
+                progressBar.style.display = 'block';
+                progressFill.style.width = data.percent + '%';
+                progressText.textContent = data.percent + '%';
+            }
+
+            if (data.status === 'complete') {
+                statusSpinner.style.display = 'none';
+                progressBar.style.display = 'block';
+                progressFill.style.width = '100%';
+                progressText.textContent = '';
+                statusMessage.textContent = 'Portrait complete!';
+                newPhotoBtn.style.display = 'inline-block';
+            }
+        });
+
+        socket.on('error', (data) => {
+            if (currentScreen === 'status-screen') {
+                statusSpinner.style.display = 'none';
+                statusMessage.textContent = data.message || 'An error occurred';
+                newPhotoBtn.style.display = 'inline-block';
+            } else {
+                alert(data.message || 'An error occurred');
+            }
+        });
+
+        function updateConnectionUI() {
+            if (!robotConnected) {
+                connectionBar.className = 'connection-bar no-robot';
+                connectionBar.textContent = 'Robot is offline';
+                submitBtn.disabled = true;
+            } else {
+                connectionBar.className = 'connection-bar';
+                connectionBar.textContent = '';
+                submitBtn.disabled = false;
+            }
+        }
+
+        // --- Event Listeners ---
+        captureBtn.addEventListener('click', capturePhoto);
+        retakeBtn.addEventListener('click', retakePhoto);
+        submitBtn.addEventListener('click', submitPhoto);
+        newPhotoBtn.addEventListener('click', resetForNewPhoto);
+
+        // --- Init ---
+        startCamera();
+    </script>
+</body>
+</html>
