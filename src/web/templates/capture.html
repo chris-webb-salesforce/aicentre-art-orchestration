@@ -413,6 +413,32 @@
             color: #fff;
         }
 
+        /* Countdown overlay */
+        .countdown-overlay {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 8;
+            pointer-events: none;
+        }
+
+        .countdown-number {
+            font-size: 8rem;
+            font-weight: 200;
+            color: #fff;
+            text-shadow: 0 0 40px rgba(0,0,0,0.6);
+            animation: countdownPop 0.8s ease-out forwards;
+        }
+
+        @keyframes countdownPop {
+            0% { transform: scale(1.6); opacity: 0; }
+            20% { transform: scale(1); opacity: 1; }
+            80% { opacity: 1; }
+            100% { transform: scale(0.8); opacity: 0; }
+        }
+
         /* Logo */
         .logo {
             position: fixed;
@@ -456,6 +482,8 @@
             <div class="camera-error" id="cameraError">
                 <p>Unable to access camera.<br>Please allow camera permissions and reload the page.</p>
             </div>
+
+            <div class="countdown-overlay" id="countdownOverlay" style="display: none;"></div>
 
             <div id="captured-preview">
                 <img id="preview-img" src="" alt="Captured photo">
@@ -644,9 +672,40 @@
             }
         }
 
-        function capturePhoto() {
-            if (!cameraStream) return;
+        let countdownActive = false;
 
+        function capturePhoto() {
+            if (!cameraStream || countdownActive) return;
+            countdownActive = true;
+            captureBtn.style.pointerEvents = 'none';
+            captureBtn.style.opacity = '0.4';
+
+            const overlay = document.getElementById('countdownOverlay');
+            let count = 3;
+
+            function tick() {
+                overlay.style.display = 'flex';
+                overlay.innerHTML = `<div class="countdown-number">${count}</div>`;
+
+                if (count > 1) {
+                    count--;
+                    setTimeout(tick, 900);
+                } else {
+                    setTimeout(() => {
+                        overlay.style.display = 'none';
+                        overlay.innerHTML = '';
+                        snapPhoto();
+                        countdownActive = false;
+                        captureBtn.style.pointerEvents = '';
+                        captureBtn.style.opacity = '';
+                    }, 900);
+                }
+            }
+
+            tick();
+        }
+
+        function snapPhoto() {
             const track = cameraStream.getVideoTracks()[0];
             const settings = track.getSettings();
             const w = settings.width || video.videoWidth;

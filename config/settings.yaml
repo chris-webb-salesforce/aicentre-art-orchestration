@@ -15,11 +15,11 @@ mycobot:
 dexarm:
   port: "/dev/tty.usbmodem3187378532331"
   baud_rate: 115200
-  feedrate: 4000              # Drawing speed (mm/min) - slower = smoother lines
+  feedrate: 6000              # Drawing speed (mm/min) - slower = smoother lines
   travel_feedrate: 4000       # Pen-up travel speed (mm/min)
   acceleration: 200           # Drawing acceleration (mm/s²) - lower = smoother
   travel_acceleration: 200    # Travel acceleration (mm/s²)
-  jerk: 5.0                   # Jerk limit (mm/s) - lower = smoother direction changes
+  jerk: 10.0                   # Jerk limit (mm/s) - lower = smoother direction changes
 
 # Drawing Bounds (mm)
 drawing:
@@ -87,9 +87,9 @@ openai:
         canny_low: 30
         canny_high: 100
         simplify_epsilon: 0.0
-        min_length: 3.0
+        min_length: 5.0
         min_area: 500
-        min_contour_points: 5
+        min_contour_points: 7
         merge_enabled: true
         merge_distance: 40.0
         region_aware: false
