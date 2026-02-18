@@ -374,28 +374,26 @@ class DexArmController:
         safe_z: float = 40.0,
         center_x: float = 0.0,
         center_y: float = 280.0,
-        radius_x: float = 40.0,
-        radius_y: float = 25.0,
-        z_amplitude: float = 15.0,
+        sweep_x: float = 50.0,
+        arc_height: float = 20.0,
         speed: int = 1500,
-        steps: int = 36,
+        steps: int = 24,
         stop_event=None
     ) -> bool:
         """
-        Perform a smooth figure-8 idle dance at a safe height.
+        Perform a side-to-side arcing sway at a safe height.
 
-        The arm sways side-to-side in a figure-8 with gentle Z bobbing,
-        staying well above the pen contact height.
+        The arm sweeps left and right in a smooth arc, like a pendulum.
+        Stays well above the pen contact height.
 
         Args:
             safe_z: Base Z height for the dance (well above z_down)
-            center_x: X center of the dance pattern
-            center_y: Y center of the dance pattern
-            radius_x: Horizontal extent of the figure-8
-            radius_y: Vertical extent of the figure-8
-            z_amplitude: How much Z bobs up and down during the dance
+            center_x: X center of the arc
+            center_y: Y position (constant)
+            sweep_x: How far left/right the arm swings from center
+            arc_height: How much higher the arm goes at the arc peak vs the sides
             speed: Movement speed (mm/min)
-            steps: Number of points per full figure-8 loop
+            steps: Number of points per full left-right-left cycle
             stop_event: Optional threading.Event to check for early stop
 
         Returns:
@@ -405,26 +403,24 @@ class DexArmController:
             return False
 
         try:
-            # Move to the starting position at safe height
-            start_z = safe_z + z_amplitude
-            self.arm.fast_move_to(center_x, center_y, start_z, speed)
-            self._current_position = (center_x, center_y, start_z)
+            # Move to starting position (left side of arc)
+            self.arm.fast_move_to(center_x - sweep_x, center_y, safe_z, speed)
+            self._current_position = (center_x - sweep_x, center_y, safe_z)
 
-            # One full figure-8 loop
+            # One full left-right-left cycle using a sine wave
             for i in range(steps):
                 if stop_event and stop_event.is_set():
                     break
 
                 t = (2 * math.pi * i) / steps
 
-                # Figure-8 (lemniscate) parametric form
-                px = center_x + radius_x * math.sin(t)
-                py = center_y + radius_y * math.sin(t) * math.cos(t)
-                # Gentle Z bob — two full bobs per loop, staying above safe_z
-                pz = safe_z + z_amplitude * (0.5 + 0.5 * math.sin(2 * t))
+                # Sweep side to side
+                px = center_x + sweep_x * math.sin(t)
+                # Arc up in the middle, lower at the sides
+                pz = safe_z + arc_height * math.cos(t) ** 2
 
-                self.arm.fast_move_to(px, py, pz, speed)
-                self._current_position = (px, py, pz)
+                self.arm.fast_move_to(px, center_y, pz, speed)
+                self._current_position = (px, center_y, pz)
 
             return True
 

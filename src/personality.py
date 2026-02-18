@@ -178,11 +178,10 @@ class IdleDance(AnimationController):
         safe_z: float = 40.0,
         center_x: float = 0.0,
         center_y: float = 280.0,
-        radius_x: float = 40.0,
-        radius_y: float = 25.0,
-        z_amplitude: float = 15.0,
+        sweep_x: float = 50.0,
+        arc_height: float = 20.0,
         speed: int = 1500,
-        pause_between: float = 1.0
+        pause_between: float = 0.5
     ):
         """
         Initialize idle dance animation.
@@ -190,11 +189,10 @@ class IdleDance(AnimationController):
         Args:
             dexarm_controller: DexArmController instance
             safe_z: Base Z height — must be well above z_down
-            center_x: X center of the figure-8
-            center_y: Y center of the figure-8
-            radius_x: Horizontal extent of the sway
-            radius_y: Forward/back extent of the sway
-            z_amplitude: How much the arm bobs up and down
+            center_x: X center of the arc
+            center_y: Y position (constant)
+            sweep_x: How far left/right the arm swings
+            arc_height: How much higher at the peak of the arc
             speed: Movement speed (mm/min)
             pause_between: Seconds to pause between loops
         """
@@ -203,23 +201,21 @@ class IdleDance(AnimationController):
         self.safe_z = safe_z
         self.center_x = center_x
         self.center_y = center_y
-        self.radius_x = radius_x
-        self.radius_y = radius_y
-        self.z_amplitude = z_amplitude
+        self.sweep_x = sweep_x
+        self.arc_height = arc_height
         self.speed = speed
         self.pause_between = pause_between
 
     def _animation_loop(self):
-        """Perform continuous figure-8 dance loops."""
+        """Perform continuous side-to-side arc loops."""
         while not self._stop_event.is_set():
             try:
                 self.arm.perform_idle_dance(
                     safe_z=self.safe_z,
                     center_x=self.center_x,
                     center_y=self.center_y,
-                    radius_x=self.radius_x,
-                    radius_y=self.radius_y,
-                    z_amplitude=self.z_amplitude,
+                    sweep_x=self.sweep_x,
+                    arc_height=self.arc_height,
                     speed=self.speed,
                     stop_event=self._stop_event
                 )
