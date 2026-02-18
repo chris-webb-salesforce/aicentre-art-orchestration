@@ -40,6 +40,14 @@ class AdaptiveExtractorConfig:
     # Method selection
     method: str = "adaptive"  # "adaptive", "canny", "skeleton", "hybrid"
 
+    # Thinning parameters (Zhang-Suen)
+    thinning_threshold: int = 127      # Binary threshold for thinning (0-255)
+    thinning_cleanup: bool = True      # Post-thinning morphological cleanup to reconnect gaps
+    thinning_cleanup_kernel: int = 2   # Kernel size for cleanup
+
+    # Noise filtering
+    min_straightness: float = 0.15     # Min bbox_diagonal / path_length ratio (filters squiggly noise)
+
     # Speed optimizations
     min_length: float = 10.0           # Minimum contour length in pixels (filters tiny lines)
     merge_distance: float = 5.0        # Merge contours with endpoints within this distance
@@ -60,8 +68,9 @@ class AdaptiveContourExtractor:
     Methods:
     - adaptive: Analyzes stroke thickness and uses appropriate method per-region
     - canny: Traditional Canny edge detection (good for thin lines)
-    - skeleton: Skeletonization (good for thick lines, finds centerline)
-    - hybrid: Runs both and merges results intelligently
+    - skeleton: Skeletonization using Zhang-Suen thinning (good for thick lines)
+    - thinning: Direct Zhang-Suen thinning pipeline (cleanest single-pixel skeleton)
+    - hybrid: Runs both skeleton and canny, merges results intelligently
     """
 
     def __init__(self, config: AdaptiveExtractorConfig = None):
@@ -90,6 +99,8 @@ class AdaptiveContourExtractor:
             contours = self._extract_canny(image)
         elif method == "hybrid":
             contours = self._extract_hybrid(image)
+        elif method == "thinning":
+            contours = self._extract_thinning(image)
         else:
             logger.warning(f"Unknown method '{method}', using adaptive")
             contours = self._extract_adaptive(image)
@@ -314,6 +325,8 @@ class AdaptiveContourExtractor:
                 return self._extract_hybrid(image)
             elif base_method == "skeleton":
                 return self._extract_skeleton(image)
+            elif base_method == "thinning":
+                return self._extract_thinning(image)
             elif base_method == "adaptive":
                 return self._extract_adaptive(image)
             else:
@@ -351,6 +364,8 @@ class AdaptiveContourExtractor:
             detail_contours = self._extract_hybrid(detail_image)
         elif base_method == "skeleton":
             detail_contours = self._extract_skeleton(detail_image)
+        elif base_method == "thinning":
+            detail_contours = self._extract_thinning(detail_image)
         elif base_method == "adaptive":
             detail_contours = self._extract_adaptive(detail_image)
         else:
@@ -379,6 +394,8 @@ class AdaptiveContourExtractor:
             non_detail_contours = self._extract_hybrid(non_detail_image)
         elif base_method == "skeleton":
             non_detail_contours = self._extract_skeleton(non_detail_image)
+        elif base_method == "thinning":
+            non_detail_contours = self._extract_thinning(non_detail_image)
         elif base_method == "adaptive":
             non_detail_contours = self._extract_adaptive(non_detail_image)
         else:
@@ -389,8 +406,6 @@ class AdaptiveContourExtractor:
 
         logger.info(f"Region-aware extraction: {len(all_contours)} total contours")
         return all_contours
-
-        return gray, binary
 
     def _analyze_thickness(self, binary: np.ndarray) -> np.ndarray:
         """
@@ -476,55 +491,105 @@ class AdaptiveContourExtractor:
 
     def _extract_hybrid(self, image: np.ndarray) -> List[Contour]:
         """
-        Run both methods and intelligently merge results.
+        Combine thinning (centerlines) with Canny (fine detail) using skeleton-first
+        deduplication to eliminate double walls.
 
-        Strategy:
-        1. Run both skeleton and canny on full image
-        2. For overlapping contours, prefer skeleton (cleaner centerline)
-        3. Keep unique contours from both
+        The problem: Canny edge detection finds BOTH edges of thick strokes, producing
+        parallel "double wall" contours alongside the thinning centerline. A thick stroke
+        becomes 3 lines (left edge + center + right edge) instead of 1.
+
+        The solution: skeleton-first coverage. Skeleton (thinning) contours are always
+        kept — they represent the ground truth centerlines. A coverage map is built
+        around each skeleton contour using the local stroke width (from the distance
+        transform). Canny contours that mostly fall within this coverage are duplicate
+        edges and get removed. Canny contours that extend beyond the coverage capture
+        unique thin details (beard hairs, fine lines) and survive.
+
+        Tuning guide:
+        - Coverage thickness formula: max(max_half_width * 2 + 2, 3)
+          The *2 converts half-width to full stroke width, +2 adds 1px buffer per side.
+          Increase the +2 to catch more edges (risks removing thin details near thick
+          strokes). Decrease to preserve more detail (risks double walls).
+        - Overlap threshold (currently 0.8): fraction of Canny points inside skeleton
+          coverage needed to discard that contour. Lower = more aggressive filtering
+          (fewer double walls, but loses detail). Higher = more permissive (more detail,
+          but double walls may survive). Tested range: 0.5 (too aggressive, only ~11
+          Canny survive) to 0.8 (good balance of detail vs double walls).
+        - Canny-to-Canny dedup: surviving Canny contours also add to the coverage map
+          (processed longest-first), preventing duplicate Canny contours from both
+          surviving.
         """
         gray, binary = self._preprocess(image)
 
-        # Get contours from both methods
         skeleton_contours = self._skeletonize_and_extract(binary)
         canny_contours = self._canny_and_extract(gray)
 
         logger.info(f"Hybrid: {len(skeleton_contours)} skeleton, {len(canny_contours)} canny candidates")
 
-        # Create a coverage map from skeleton contours
         h, w = binary.shape
-        skeleton_coverage = np.zeros((h, w), dtype=np.uint8)
+        # Distance transform: value at each foreground pixel = distance to nearest
+        # background pixel, approximating local half-stroke-width
+        dist_transform = cv2.distanceTransform(binary, cv2.DIST_L2, 5)
 
+        # Phase 1: Build coverage from ALL skeleton contours (they always survive).
+        # Each skeleton contour "claims" a band as wide as the stroke it represents.
+        # Any Canny edge running parallel within this band is a duplicate.
+        coverage = np.zeros((h, w), dtype=np.uint8)
         for contour in skeleton_contours:
             pts = np.array(contour.points, dtype=np.int32)
-            cv2.polylines(skeleton_coverage, [pts], False, 255, thickness=5)
-
-        # Filter canny contours - only keep those not covered by skeleton
-        filtered_canny = []
-        for contour in canny_contours:
-            pts = np.array(contour.points, dtype=np.int32)
-
-            # Check how much of this contour overlaps with skeleton coverage
-            overlap_count = 0
+            # Find the thickest point along this skeleton contour
+            max_half_width = 0
             for pt in pts:
                 x, y = int(pt[0]), int(pt[1])
                 if 0 <= x < w and 0 <= y < h:
-                    if skeleton_coverage[y, x] > 0:
-                        overlap_count += 1
+                    max_half_width = max(max_half_width, dist_transform[y, x])
+            # Coverage band: full stroke width (2 * half_width) + 1px buffer per side
+            thickness = max(int(max_half_width * 2) + 2, 3)
+            cv2.polylines(coverage, [pts], False, 255, thickness=thickness)
 
-            overlap_ratio = overlap_count / max(len(pts), 1)
+        # Phase 2: Filter Canny contours against skeleton coverage.
+        # Process longest Canny contours first — kept contours add to the coverage
+        # map, deduplicating shorter Canny contours that overlap with them.
+        canny_indexed = sorted(enumerate(canny_contours), key=lambda x: -x[1].length)
+        keep_canny = [True] * len(canny_contours)
 
-            # Keep if less than 50% overlap
-            if overlap_ratio < 0.5:
-                filtered_canny.append(contour)
+        for idx, contour in canny_indexed:
+            pts = np.array(contour.points, dtype=np.int32)
+            # Count how many points fall inside the existing coverage zone
+            covered = 0
+            for pt in pts:
+                x, y = int(pt[0]), int(pt[1])
+                if 0 <= x < w and 0 <= y < h:
+                    if coverage[y, x] > 0:
+                        covered += 1
+            ratio = covered / max(len(pts), 1)
+
+            # If most of this contour is already covered, it's a duplicate edge
+            if ratio > 0.8:
+                keep_canny[idx] = False
+                continue
+
+            # This Canny contour adds unique detail — keep it, and add its own
+            # coverage to prevent duplicate Canny contours from also surviving
+            max_hw = 0
+            for pt in pts:
+                x, y = int(pt[0]), int(pt[1])
+                if 0 <= x < w and 0 <= y < h:
+                    max_hw = max(max_hw, dist_transform[y, x])
+            thickness = max(int(max_hw * 2) + 2, 3)
+            cv2.polylines(coverage, [pts], False, 255, thickness=thickness)
+
+        filtered_canny = [c for i, c in enumerate(canny_contours) if keep_canny[i]]
+        removed = len(canny_contours) - len(filtered_canny)
+        logger.info(f"Skeleton coverage filtered {removed} Canny contours, kept {len(filtered_canny)}")
 
         all_contours = skeleton_contours + filtered_canny
-        logger.info(f"Hybrid result: {len(skeleton_contours)} skeleton + {len(filtered_canny)} unique canny = {len(all_contours)} total")
+        logger.info(f"Hybrid result: {len(all_contours)} contours ({len(skeleton_contours)} skeleton + {len(filtered_canny)} canny)")
 
         return all_contours
 
     def _extract_skeleton(self, image: np.ndarray) -> List[Contour]:
-        """Extract using only skeletonization."""
+        """Extract using skeletonization (now uses Zhang-Suen thinning)."""
         _, binary = self._preprocess(image)
         return self._skeletonize_and_extract(binary)
 
@@ -533,30 +598,126 @@ class AdaptiveContourExtractor:
         gray, _ = self._preprocess(image)
         return self._canny_and_extract(gray)
 
-    def _skeletonize_and_extract(self, binary: np.ndarray) -> List[Contour]:
-        """Apply skeletonization and extract contours."""
+    def _extract_thinning(self, image: np.ndarray) -> List[Contour]:
+        """Extract using Zhang-Suen thinning for clean 1px skeleton."""
+        _, binary = self._preprocess(image)
+        return self._thinning_and_extract(binary)
+
+    def _zhang_suen_thinning(self, binary: np.ndarray) -> np.ndarray:
+        """
+        Zhang-Suen thinning algorithm.
+        Reduces binary image to 1-pixel wide skeleton while preserving topology.
+
+        Args:
+            binary: Binary image (0 or 255, foreground=255)
+
+        Returns:
+            Thinned binary image (0 or 255)
+        """
+        # Try the optimized C++ version first
+        try:
+            return cv2.ximgproc.thinning(binary, thinningType=cv2.ximgproc.THINNING_ZHANGSUEN)
+        except (AttributeError, cv2.error):
+            pass
+
+        # Pure NumPy fallback
+        img = (binary > 0).astype(np.uint8)
+
+        while True:
+            # Sub-iteration 1
+            markers_1 = self._zhang_suen_iteration(img, step=1)
+            img[markers_1] = 0
+
+            # Sub-iteration 2
+            markers_2 = self._zhang_suen_iteration(img, step=2)
+            img[markers_2] = 0
+
+            # Stop if no pixels were removed
+            if not np.any(markers_1) and not np.any(markers_2):
+                break
+
+        return (img * 255).astype(np.uint8)
+
+    def _zhang_suen_iteration(self, img: np.ndarray, step: int) -> np.ndarray:
+        """
+        One sub-iteration of Zhang-Suen thinning.
+
+        Args:
+            img: Binary image (0 or 1)
+            step: 1 or 2 (the two sub-iterations have different conditions)
+
+        Returns:
+            Boolean mask of pixels to remove.
+        """
+        # Extract 8-neighbors using array slicing
+        # P2=N, P3=NE, P4=E, P5=SE, P6=S, P7=SW, P8=W, P9=NW
+        p2 = img[0:-2, 1:-1]   # North
+        p3 = img[0:-2, 2:]     # NE
+        p4 = img[1:-1, 2:]     # East
+        p5 = img[2:,   2:]     # SE
+        p6 = img[2:,   1:-1]   # South
+        p7 = img[2:,   0:-2]   # SW
+        p8 = img[1:-1, 0:-2]   # West
+        p9 = img[0:-2, 0:-2]   # NW
+
+        center = img[1:-1, 1:-1]
+
+        # B(P1): number of non-zero neighbors (must be 2-6)
+        B = p2 + p3 + p4 + p5 + p6 + p7 + p8 + p9
+        cond_B = (B >= 2) & (B <= 6)
+
+        # A(P1): number of 0->1 transitions in clockwise order (must be exactly 1)
+        A = (((p2 == 0) & (p3 == 1)).astype(np.int32) +
+             ((p3 == 0) & (p4 == 1)).astype(np.int32) +
+             ((p4 == 0) & (p5 == 1)).astype(np.int32) +
+             ((p5 == 0) & (p6 == 1)).astype(np.int32) +
+             ((p6 == 0) & (p7 == 1)).astype(np.int32) +
+             ((p7 == 0) & (p8 == 1)).astype(np.int32) +
+             ((p8 == 0) & (p9 == 1)).astype(np.int32) +
+             ((p9 == 0) & (p2 == 1)).astype(np.int32))
+        cond_A = (A == 1)
+
+        if step == 1:
+            cond3 = (p2 * p4 * p6 == 0)
+            cond4 = (p4 * p6 * p8 == 0)
+        else:
+            cond3 = (p2 * p4 * p8 == 0)
+            cond4 = (p2 * p6 * p8 == 0)
+
+        # Build result mask (padded with False on borders)
+        result = np.zeros(img.shape, dtype=bool)
+        result[1:-1, 1:-1] = (center == 1) & cond_B & cond_A & cond3 & cond4
+
+        return result
+
+    def _thinning_and_extract(self, binary: np.ndarray) -> List[Contour]:
+        """
+        Apply Zhang-Suen thinning and extract contours.
+
+        Pipeline: thin -> optional cleanup -> findContours -> approxPolyDP
+        """
         if np.count_nonzero(binary) == 0:
             return []
 
-        # Skeletonize using morphological operations
-        skeleton = np.zeros(binary.shape, np.uint8)
-        element = cv2.getStructuringElement(cv2.MORPH_CROSS, (3, 3))
+        # Apply Zhang-Suen thinning
+        skeleton = self._zhang_suen_thinning(binary)
 
-        temp = binary.copy()
-        while True:
-            eroded = cv2.erode(temp, element)
-            dilated = cv2.dilate(eroded, element)
-            diff = cv2.subtract(temp, dilated)
-            skeleton = cv2.bitwise_or(skeleton, diff)
-            temp = eroded.copy()
+        # Post-thinning cleanup: close small gaps from thinning artifacts
+        if self.config.thinning_cleanup:
+            k = self.config.thinning_cleanup_kernel
+            kernel = np.ones((k, k), np.uint8)
+            skeleton = cv2.morphologyEx(skeleton, cv2.MORPH_CLOSE, kernel, iterations=1)
 
-            if cv2.countNonZero(temp) == 0:
-                break
+        # Find contours on thinned skeleton
+        # Use CHAIN_APPROX_SIMPLE to compress redundant points from 1px skeleton tracing
+        contours_cv, _ = cv2.findContours(skeleton, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
 
-        # Find contours on skeleton
-        contours_cv, _ = cv2.findContours(skeleton, cv2.RETR_LIST, cv2.CHAIN_APPROX_NONE)
+        # Skip area filter for skeleton contours (1px lines have near-zero area)
+        return self._process_contours(contours_cv, self.config.skeleton_simplify, skip_area_filter=True)
 
-        return self._process_contours(contours_cv, self.config.skeleton_simplify)
+    def _skeletonize_and_extract(self, binary: np.ndarray) -> List[Contour]:
+        """Apply skeletonization and extract contours. Uses Zhang-Suen thinning."""
+        return self._thinning_and_extract(binary)
 
     def _canny_and_extract(self, gray: np.ndarray) -> List[Contour]:
         """Apply Canny edge detection and extract contours."""
@@ -579,16 +740,22 @@ class AdaptiveContourExtractor:
 
         return self._process_contours(contours_cv, self.config.simplify_epsilon)
 
-    def _process_contours(self, contours_cv, simplify_epsilon: float) -> List[Contour]:
-        """Convert OpenCV contours to our Contour format with filtering."""
+    def _process_contours(self, contours_cv, simplify_epsilon: float, skip_area_filter: bool = False) -> List[Contour]:
+        """Convert OpenCV contours to our Contour format with filtering.
+
+        Args:
+            skip_area_filter: If True, skip the area-based filter. Used for skeleton/thinning
+                contours where 1px lines have near-zero enclosed area by nature.
+        """
         contours = []
 
         for cv_contour in contours_cv:
             area = cv2.contourArea(cv_contour)
 
-            # Filter by area and point count
-            if area < self.config.min_area and len(cv_contour) < self.config.min_contour_points:
-                continue
+            # Filter by area and point count (skip area check for skeleton-derived contours)
+            if not skip_area_filter:
+                if area < self.config.min_area and len(cv_contour) < self.config.min_contour_points:
+                    continue
 
             # Simplify
             simplified = cv2.approxPolyDP(cv_contour, simplify_epsilon, closed=False)
@@ -607,6 +774,15 @@ class AdaptiveContourExtractor:
             # Filter by minimum length
             if length < self.config.min_length:
                 continue
+
+            # Filter squiggly noise: contours with high path length relative to spatial extent
+            if self.config.min_straightness > 0 and length > 0:
+                xs = [p[0] for p in points]
+                ys = [p[1] for p in points]
+                bbox_diag = np.sqrt((max(xs) - min(xs))**2 + (max(ys) - min(ys))**2)
+                straightness = bbox_diag / length
+                if straightness < self.config.min_straightness:
+                    continue
 
             # Check if closed
             is_closed = False

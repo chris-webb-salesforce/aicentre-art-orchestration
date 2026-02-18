@@ -191,7 +191,7 @@ class PortraitSystem:
                 min_contour_points=self.config.contour.min_contour_points
             )
         else:
-            # Use AdaptiveContourExtractor for skeleton/adaptive/hybrid
+            # Use AdaptiveContourExtractor for skeleton/adaptive/hybrid/thinning
             adaptive_config = AdaptiveExtractorConfig(
                 method=self.config.contour.method,
                 canny_low=self.config.contour.canny_low,
@@ -202,7 +202,19 @@ class PortraitSystem:
                 min_contour_points=self.config.contour.min_contour_points,
                 thickness_threshold=self.config.contour.thickness_threshold,
                 density_threshold=self.config.contour.density_threshold,
-                skeleton_simplify=self.config.contour.skeleton_simplify
+                skeleton_simplify=self.config.contour.skeleton_simplify,
+                thinning_threshold=self.config.contour.thinning_threshold,
+                thinning_cleanup=self.config.contour.thinning_cleanup,
+                thinning_cleanup_kernel=self.config.contour.thinning_cleanup_kernel,
+                min_straightness=self.config.contour.min_straightness,
+                min_length=self.config.contour.min_length,
+                merge_distance=self.config.contour.merge_distance,
+                merge_enabled=self.config.contour.merge_enabled,
+                region_aware=self.config.contour.region_aware,
+                detail_simplify_epsilon=self.config.contour.detail_simplify_epsilon,
+                detail_min_length=self.config.contour.detail_min_length,
+                detail_min_area=self.config.contour.detail_min_area,
+                detail_region_padding=self.config.contour.detail_region_padding,
             )
             self.contour_extractor = AdaptiveContourExtractor(adaptive_config)
 
@@ -515,6 +527,18 @@ class PortraitSystem:
                     thickness_threshold=sc.thickness_threshold or self.config.contour.thickness_threshold,
                     density_threshold=sc.density_threshold or self.config.contour.density_threshold,
                     skeleton_simplify=sc.skeleton_simplify or self.config.contour.skeleton_simplify,
+                    thinning_threshold=sc.thinning_threshold or self.config.contour.thinning_threshold,
+                    thinning_cleanup=sc.thinning_cleanup if sc.thinning_cleanup is not None else self.config.contour.thinning_cleanup,
+                    thinning_cleanup_kernel=sc.thinning_cleanup_kernel or self.config.contour.thinning_cleanup_kernel,
+                    min_straightness=sc.min_straightness if sc.min_straightness is not None else self.config.contour.min_straightness,
+                    min_length=sc.min_length or self.config.contour.min_length,
+                    merge_distance=sc.merge_distance or self.config.contour.merge_distance,
+                    merge_enabled=sc.merge_enabled if sc.merge_enabled is not None else self.config.contour.merge_enabled,
+                    region_aware=sc.region_aware if sc.region_aware is not None else self.config.contour.region_aware,
+                    detail_simplify_epsilon=sc.detail_simplify_epsilon or self.config.contour.detail_simplify_epsilon,
+                    detail_min_length=sc.detail_min_length or self.config.contour.detail_min_length,
+                    detail_min_area=sc.detail_min_area or self.config.contour.detail_min_area,
+                    detail_region_padding=sc.detail_region_padding or self.config.contour.detail_region_padding,
                 )
                 self.contour_extractor = AdaptiveContourExtractor(adaptive_config)
 

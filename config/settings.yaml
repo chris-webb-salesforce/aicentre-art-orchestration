@@ -19,17 +19,17 @@ dexarm:
   travel_feedrate: 4000       # Pen-up travel speed (mm/min)
   acceleration: 200           # Drawing acceleration (mm/s²) - lower = smoother
   travel_acceleration: 200    # Travel acceleration (mm/s²)
-  jerk: 10.0                   # Jerk limit (mm/s) - lower = smoother direction changes
+  jerk: 7.0                   # Jerk limit (mm/s) - lower = smoother direction changes
 
 # Drawing Bounds (mm)
 drawing:
-  x_min: -60.0
-  x_max: 60.0
-  y_min: 220.0
-  y_max: 340.0
+  x_min: -53.0
+  x_max: 54.0
+  y_min: 232.0
+  y_max: 337.0
   size_mm: 120
-  z_up: 5.0
-  z_down: 0.0
+  z_up: -65.0
+  z_down: -70.0
   flip_x: true            # Mirror horizontally (fixes camera mirror effect)
   flip_y: false           # Mirror vertically
   safe_position:
@@ -84,15 +84,16 @@ openai:
         *Keep the image simple and with only thin 1px lines*
       contour:
         method: "hybrid"
-        canny_low: 30
+        skeleton_simplify: 1.0
+        canny_low: 50
         canny_high: 100
         simplify_epsilon: 0.0
-        min_length: 5.0
+        min_length: 1.0
         min_area: 500
-        min_contour_points: 7
-        merge_enabled: true
-        merge_distance: 40.0
-        region_aware: false
+        min_contour_points: 5
+        merge_enabled: false
+        merge_distance: 30.0
+        region_aware: true
 
     minimal:
       name: "Minimalist Line Art"
@@ -179,7 +180,7 @@ openai:
         Make all lines as thin as possible, ideally 1 pixel thick.
         The face should fill most of the image.
       contour:
-        method: "skeleton"
+        method: "thinning"
         simplify_epsilon: 1.3
         min_length: 15.0
         merge_enabled: true
@@ -213,7 +214,7 @@ openai:
         Make all lines as thin as possible, ideally 1 pixel thick.
         The face should fill most of the image.
       contour:
-        method: "skeleton"
+        method: "thinning"
         simplify_epsilon: 2.0
         min_length: 15.0
         min_area: 100
@@ -230,7 +231,7 @@ openai:
         Make the line as thin as possible, ideally 1 pixel thick.
         The face should fill most of the image.
       contour:
-        method: "skeleton"
+        method: "thinning"
         simplify_epsilon: 0.8
         min_length: 5.0
         merge_enabled: true
@@ -238,7 +239,7 @@ openai:
 
 # Contour Extraction Settings
 contour_extraction:
-  # Method: "canny" (original), "skeleton", "adaptive" (smart), or "hybrid" (both)
+  # Method: "canny", "skeleton", "adaptive", "hybrid", or "thinning"
   method: "canny"
 
   # Canny parameters (for thin lines)
@@ -255,6 +256,11 @@ contour_extraction:
   thickness_threshold: 5      # Pixels - lines thicker than this use skeleton
   density_threshold: 0.5      # Local density above this triggers skeleton method
   skeleton_simplify: 0.5      # Simplification for skeleton contours
+
+  # Thinning parameters (Zhang-Suen, for "thinning" method and improved "skeleton")
+  thinning_threshold: 127     # Binary threshold for thinning (0-255)
+  thinning_cleanup: true      # Post-thinning morphological cleanup to reconnect gaps
+  thinning_cleanup_kernel: 2  # Cleanup kernel size
 
   # Speed optimizations (reduce drawing time)
   min_length: 5.0            # Filter contours shorter than this (pixels) - higher = faster
