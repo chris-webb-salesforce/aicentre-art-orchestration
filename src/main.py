@@ -440,6 +440,9 @@ class PortraitSystem:
                 logger.error("Drawing failed")
                 return False
 
+            # Return arm to home position (X0, Y300, Z0)
+            self.dexarm.go_home()
+
             # Done!
             logger.info("\n" + "=" * 40)
             logger.info("PORTRAIT COMPLETE!")
@@ -610,6 +613,9 @@ class PortraitSystem:
             if not success:
                 notify('error', 'Drawing failed')
                 return False
+
+            # Return arm to home position (X0, Y300, Z0)
+            self.dexarm.go_home()
 
             notify('complete', 'Portrait complete!', 100)
             logger.info(f"Portrait complete! Session: {session_dir}")
