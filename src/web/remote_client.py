@@ -50,7 +50,7 @@ class RemoteClient:
         self._is_busy = False
 
         # Idle dance animation (runs while waiting for jobs)
-        self.idle_dance = IdleDance(portrait_system.dexarm)
+        self.idle_dance = IdleDance(portrait_system.dexarm, speed=3000)
 
         self.sio = socketio.Client(
             reconnection=True,
