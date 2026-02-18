@@ -33,6 +33,7 @@ load_dotenv()
 
 from src.config import load_config, validate_config
 from src.main import PortraitSystem
+from src.personality import IdleDance
 
 logger = logging.getLogger(__name__)
 
@@ -48,6 +49,9 @@ class RemoteClient:
         self.token = token
         self._is_busy = False
 
+        # Idle dance animation (runs while waiting for jobs)
+        self.idle_dance = IdleDance(portrait_system.dexarm)
+
         self.sio = socketio.Client(
             reconnection=True,
             reconnection_delay=2,
@@ -62,10 +66,12 @@ class RemoteClient:
         def on_connect():
             logger.info("Connected to relay server")
             self.sio.emit('ready', {}, namespace='/robot')
+            self.idle_dance.start()
 
         @self.sio.on('disconnect', namespace='/robot')
         def on_disconnect():
             logger.warning("Disconnected from relay server")
+            self.idle_dance.stop()
 
         @self.sio.on('new_job', namespace='/robot')
         def on_new_job(data):
@@ -114,6 +120,7 @@ class RemoteClient:
             return
 
         self._is_busy = True
+        self.idle_dance.stop()
 
         try:
             # Decode the base64 photo
@@ -161,6 +168,7 @@ class RemoteClient:
 
         finally:
             self._is_busy = False
+            self.idle_dance.start()
 
 
 def main():

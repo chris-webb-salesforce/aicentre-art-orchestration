@@ -164,6 +164,74 @@ class PracticeStrokes(AnimationController):
                 time.sleep(1)
 
 
+class IdleDance(AnimationController):
+    """
+    Makes the DexArm sway in a gentle figure-8 dance while idle.
+
+    Stays at a safe height well above pen contact to avoid damage.
+    Used when the system is waiting for a new photo submission.
+    """
+
+    def __init__(
+        self,
+        dexarm_controller,
+        safe_z: float = 40.0,
+        center_x: float = 0.0,
+        center_y: float = 280.0,
+        radius_x: float = 40.0,
+        radius_y: float = 25.0,
+        z_amplitude: float = 15.0,
+        speed: int = 1500,
+        pause_between: float = 1.0
+    ):
+        """
+        Initialize idle dance animation.
+
+        Args:
+            dexarm_controller: DexArmController instance
+            safe_z: Base Z height — must be well above z_down
+            center_x: X center of the figure-8
+            center_y: Y center of the figure-8
+            radius_x: Horizontal extent of the sway
+            radius_y: Forward/back extent of the sway
+            z_amplitude: How much the arm bobs up and down
+            speed: Movement speed (mm/min)
+            pause_between: Seconds to pause between loops
+        """
+        super().__init__()
+        self.arm = dexarm_controller
+        self.safe_z = safe_z
+        self.center_x = center_x
+        self.center_y = center_y
+        self.radius_x = radius_x
+        self.radius_y = radius_y
+        self.z_amplitude = z_amplitude
+        self.speed = speed
+        self.pause_between = pause_between
+
+    def _animation_loop(self):
+        """Perform continuous figure-8 dance loops."""
+        while not self._stop_event.is_set():
+            try:
+                self.arm.perform_idle_dance(
+                    safe_z=self.safe_z,
+                    center_x=self.center_x,
+                    center_y=self.center_y,
+                    radius_x=self.radius_x,
+                    radius_y=self.radius_y,
+                    z_amplitude=self.z_amplitude,
+                    speed=self.speed,
+                    stop_event=self._stop_event
+                )
+
+                if self._stop_event.wait(timeout=self.pause_between):
+                    break
+
+            except Exception as e:
+                logger.warning(f"Idle dance error: {e}")
+                time.sleep(1)
+
+
 class PersonalityDirector:
     """
     Coordinates personality animations for both robots.
