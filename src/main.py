@@ -593,16 +593,14 @@ class PortraitSystem:
             if self.personality:
                 self.personality.start_drawing_mode()
 
-            start_time = time.time()
-
             def progress_cb(current, total, _position, contour=None, total_contours=None):
                 if total > 0:
-                    pct = 55 + int(45 * current / total)
-                    elapsed = time.time() - start_time
-                    remaining = (elapsed * total / current - elapsed) if current > 0 else 0
-                    msg = f'Drawing... {remaining:.0f}s remaining'
                     if contour and total_contours:
+                        pct = int(100 * contour / total_contours)
                         msg = f'Drawing line {contour}/{total_contours}'
+                    else:
+                        pct = int(100 * current / total)
+                        msg = f'Drawing...'
                     notify('drawing', msg, pct)
 
             success = self.dexarm.stream_gcode(gcode, progress_cb)

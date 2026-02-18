@@ -545,7 +545,6 @@
                     </div>
                     <div id="progressCenter">
                         <div class="progress-number" id="progressNumber">0</div>
-                        <div class="progress-unit">percent</div>
                     </div>
                 </div>
             </div>
@@ -610,7 +609,7 @@
         function setProgress(percent) {
             const offset = RING_CIRCUMFERENCE - (percent / 100) * RING_CIRCUMFERENCE;
             progressRing.style.strokeDashoffset = offset;
-            progressNumber.textContent = Math.round(percent);
+            progressNumber.textContent = `${Math.round(percent)} %`;
         }
 
         // --- Phase management ---
