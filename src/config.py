@@ -84,6 +84,10 @@ class StyleContourConfig:
     thickness_threshold: int = None
     density_threshold: float = None
     skeleton_simplify: float = None
+    thinning_threshold: int = None
+    thinning_cleanup: bool = None
+    thinning_cleanup_kernel: int = None
+    min_straightness: float = None
     min_length: float = None
     merge_distance: float = None
     merge_enabled: bool = None
@@ -116,7 +120,7 @@ class OpenAIConfig:
 
 @dataclass
 class ContourConfig:
-    method: str = "adaptive"          # "canny", "skeleton", "adaptive", or "hybrid"
+    method: str = "adaptive"          # "canny", "skeleton", "adaptive", "hybrid", or "thinning"
     canny_low: int = 30
     canny_high: int = 100
     min_area: int = 50
@@ -126,6 +130,12 @@ class ContourConfig:
     thickness_threshold: int = 3      # For adaptive: lines thicker than this use skeleton
     density_threshold: float = 0.3    # For adaptive: density above this triggers skeleton
     skeleton_simplify: float = 1.0    # Simplification for skeleton contours
+    # Thinning parameters (Zhang-Suen)
+    thinning_threshold: int = 127     # Binary threshold for thinning (0-255)
+    thinning_cleanup: bool = True     # Post-thinning morphological cleanup
+    thinning_cleanup_kernel: int = 2  # Kernel size for cleanup
+    # Noise filtering
+    min_straightness: float = 0.15    # Min bbox_diagonal / path_length (filters squiggly noise)
     # Speed optimizations
     min_length: float = 10.0          # Minimum contour length in pixels
     merge_distance: float = 5.0       # Merge contours with endpoints within this distance
@@ -259,6 +269,10 @@ def load_config(config_path: Optional[str] = None) -> Config:
                         thickness_threshold=contour_data.get('thickness_threshold'),
                         density_threshold=contour_data.get('density_threshold'),
                         skeleton_simplify=contour_data.get('skeleton_simplify'),
+                        thinning_threshold=contour_data.get('thinning_threshold'),
+                        thinning_cleanup=contour_data.get('thinning_cleanup'),
+                        thinning_cleanup_kernel=contour_data.get('thinning_cleanup_kernel'),
+                        min_straightness=contour_data.get('min_straightness'),
                         min_length=contour_data.get('min_length'),
                         merge_distance=contour_data.get('merge_distance'),
                         merge_enabled=contour_data.get('merge_enabled'),
