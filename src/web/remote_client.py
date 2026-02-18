@@ -66,12 +66,12 @@ class RemoteClient:
         def on_connect():
             logger.info("Connected to relay server")
             self.sio.emit('ready', {}, namespace='/robot')
-            self.idle_dance.start()
+            # self.idle_dance.start()
 
         @self.sio.on('disconnect', namespace='/robot')
         def on_disconnect():
             logger.warning("Disconnected from relay server")
-            self.idle_dance.stop()
+            # self.idle_dance.stop()
 
         @self.sio.on('new_job', namespace='/robot')
         def on_new_job(data):
@@ -120,7 +120,7 @@ class RemoteClient:
             return
 
         self._is_busy = True
-        self.idle_dance.stop()
+        # self.idle_dance.stop()
 
         try:
             # Decode the base64 photo
@@ -168,7 +168,7 @@ class RemoteClient:
 
         finally:
             self._is_busy = False
-            self.idle_dance.start()
+            # self.idle_dance.start()
 
 
 def main():
