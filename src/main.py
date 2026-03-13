@@ -547,12 +547,12 @@ class PortraitSystem:
 
         try:
             # Save portrait
-            notify('processing', 'Saving portrait...', 5)
+            notify('processing', 'Saving portrait...', 0)
             portrait_path = session_dir / "portrait.jpg"
             cv2.imwrite(str(portrait_path), image)
 
             # Stage 2: Generate line art
-            notify('processing', 'Generating line art... (this may take 30s)', 10)
+            notify('processing', 'Generating line art... (this may take 30s)', 0)
             lineart_path = session_dir / "lineart.png"
             line_art = self.openai_client.generate_line_art(image, str(lineart_path))
 
@@ -561,7 +561,7 @@ class PortraitSystem:
                 return False
 
             # Stage 3: Extract contours
-            notify('processing', 'Extracting drawing paths...', 40)
+            notify('processing', 'Extracting drawing paths...', 0)
             contours = self.contour_extractor.extract(line_art)
             if not contours:
                 notify('error', 'No contours extracted')
@@ -575,7 +575,7 @@ class PortraitSystem:
                 contours = self.contour_extractor.optimize_order(contours, start_pos)
 
             # Stage 4: Generate GCode
-            notify('processing', 'Generating drawing instructions...', 50)
+            notify('processing', 'Generating drawing instructions...', 0)
             image_bounds = self.contour_extractor.get_bounds(contours)
             gcode = self.gcode_generator.generate(contours, image_bounds)
 
@@ -587,7 +587,7 @@ class PortraitSystem:
             self.gcode_generator.save_to_file(gcode, str(gcode_path))
 
             est_time = self.gcode_generator.estimate_drawing_time(gcode)
-            notify('drawing', f'Drawing portrait... (~{est_time:.0f}s)', 55)
+            notify('drawing', f'Drawing portrait... (~{est_time:.0f}s)', 0)
 
             # Stage 5: Draw
             if self.personality:

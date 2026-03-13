@@ -160,7 +160,8 @@ def logout():
 @app.route('/capture')
 @require_auth
 def capture():
-    return render_template('capture.html')
+    light_mode = os.environ.get('LIGHT_MODE', 'false').lower() == 'true'
+    return render_template('capture.html', light_mode=light_mode)
 
 
 @app.route('/api/status')

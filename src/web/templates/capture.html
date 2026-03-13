@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" class="{{ 'light' if light_mode else '' }}">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0">
@@ -351,6 +351,7 @@
         }
 
         .complete-icon svg {
+            display: block;
             width: 56px;
             height: 56px;
         }
@@ -438,6 +439,174 @@
             100% { transform: scale(0.8); opacity: 0; }
         }
 
+        /* ---- Instructions Card ---- */
+        .instructions-card {
+            position: fixed;
+            z-index: 50;
+            background: rgba(20, 20, 40, 0.85);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border-radius: 14px;
+            padding: 16px 18px;
+            border: 1px solid rgba(255,255,255,0.08);
+            pointer-events: none;
+        }
+
+        .instructions-title {
+            font-size: 0.7rem;
+            font-weight: 600;
+            color: rgba(255,255,255,0.5);
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            margin-bottom: 12px;
+        }
+
+        .instructions-steps {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .instruction-step {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .step-number {
+            flex-shrink: 0;
+            width: 22px;
+            height: 22px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.65rem;
+            font-weight: 600;
+            color: #fff;
+        }
+
+        .step-text {
+            font-size: 0.8rem;
+            color: rgba(255,255,255,0.75);
+            line-height: 1.3;
+        }
+
+        /* Portrait: horizontal bar above controls */
+        @media (orientation: portrait) {
+            .instructions-card {
+                bottom: 120px;
+                left: 16px;
+                right: 16px;
+            }
+
+            .instructions-steps {
+                flex-direction: row;
+                gap: 0;
+            }
+
+            .instruction-step {
+                flex: 1;
+                flex-direction: column;
+                text-align: center;
+                gap: 6px;
+            }
+
+            .instructions-title {
+                text-align: center;
+            }
+        }
+
+        /* Landscape: vertical card top-right */
+        @media (orientation: landscape) {
+            .instructions-card {
+                top: 24px;
+                right: 24px;
+                max-width: 260px;
+            }
+        }
+
+        /* ---- Light Mode ---- */
+        html.light, html.light body {
+            background: #f5f5f7;
+            color: #1a1a1a;
+        }
+
+        html.light #camera-screen { background: #fff; }
+
+        html.light #status-screen { background: #f5f5f7; }
+
+        html.light .status-overlay {
+            background: radial-gradient(ellipse at center,
+                rgba(245,245,247,0.5) 0%,
+                rgba(245,245,247,0.85) 70%,
+                rgba(245,245,247,0.95) 100%);
+        }
+
+        html.light .status-backdrop {
+            filter: blur(40px) brightness(1.1) saturate(0.8);
+        }
+
+        html.light .review-controls {
+            background: rgba(0,0,0,0.7);
+        }
+
+        html.light .btn-secondary {
+            background: #e8e8ed;
+            color: #333;
+        }
+
+        html.light .camera-error {
+            background: #f5f5f7;
+        }
+
+        html.light .camera-error p {
+            color: #666;
+        }
+
+        html.light .progress-bg {
+            stroke: rgba(0,0,0,0.06);
+        }
+
+        html.light .progress-number {
+            color: #1a1a1a;
+        }
+
+        html.light .status-message {
+            color: rgba(0,0,0,0.7);
+        }
+
+        html.light .phase-step span {
+            color: #999;
+        }
+
+        html.light .phase-step.active span,
+        html.light .phase-step.done span {
+            color: #555;
+        }
+
+        html.light .phase-dot {
+            border-color: #ccc;
+        }
+
+        html.light .phase-connector {
+            background: #ddd;
+        }
+
+        html.light .countdown-number {
+            color: #1a1a1a;
+            text-shadow: 0 0 40px rgba(255,255,255,0.6);
+        }
+
+        html.light .connection-bar.disconnected {
+            background: #e74c3c;
+        }
+
+        html.light .connection-bar.no-robot {
+            background: #f39c12;
+        }
+
         /* Logo */
         .logo {
             position: fixed;
@@ -464,19 +633,42 @@
     <!-- Connection bar -->
     <div class="connection-bar" id="connectionBar"></div>
 
+    <!-- Instructions -->
+    <div class="instructions-card" id="instructionsCard">
+        <div class="instructions-title">How it works</div>
+        <div class="instructions-steps">
+            <div class="instruction-step">
+                <div class="step-number">1</div>
+                <div class="step-text">Strike a pose</div>
+            </div>
+            <div class="instruction-step">
+                <div class="step-number">2</div>
+                <div class="step-text">Tap to capture</div>
+            </div>
+            <div class="instruction-step">
+                <div class="step-number">3</div>
+                <div class="step-text">Review &amp; submit</div>
+            </div>
+            <div class="instruction-step">
+                <div class="step-number">4</div>
+                <div class="step-text">Watch it draw</div>
+            </div>
+        </div>
+    </div>
+
     <!-- Screen 1: Camera -->
     <div class="screen active" id="camera-screen">
         <div class="camera-area">
             <video id="camera-video" playsinline autoplay muted></video>
 
-            <div class="silhouette-guide" id="silhouetteGuide">
+            <!-- <div class="silhouette-guide" id="silhouetteGuide">
                 <svg viewBox="0 0 200 260" fill="none" xmlns="http://www.w3.org/2000/svg">
                     <ellipse cx="100" cy="80" rx="48" ry="58" stroke="white" stroke-width="2" stroke-dasharray="6 4"/>
                     <path d="M80 135 L80 155 M120 135 L120 155" stroke="white" stroke-width="2" stroke-dasharray="6 4"/>
                     <path d="M80 155 Q60 155 30 175 Q10 185 5 210 L5 260 M120 155 Q140 155 170 175 Q190 185 195 210 L195 260"
                           stroke="white" stroke-width="2" stroke-dasharray="6 4"/>
                 </svg>
-            </div>
+            </div> -->
 
             <div class="camera-error" id="cameraError">
                 <p>Unable to access camera.<br>Please allow camera permissions and reload the page.</p>
@@ -603,6 +795,8 @@
             document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
             document.getElementById(screenId).classList.add('active');
             currentScreen = screenId;
+            document.getElementById('instructionsCard').style.display =
+                screenId === 'camera-screen' ? '' : 'none';
         }
 
         // --- Progress ring ---
@@ -703,28 +897,46 @@
             tick();
         }
 
+        let submitPhotoData = null;
+
         function snapPhoto() {
             const track = cameraStream.getVideoTracks()[0];
             const settings = track.getSettings();
             const w = settings.width || video.videoWidth;
             const h = settings.height || video.videoHeight;
 
-            const maxDim = 1024;
-            let cw = w, ch = h;
-            if (w > h && w > maxDim) { cw = maxDim; ch = Math.round(h * maxDim / w); }
-            else if (h > maxDim) { ch = maxDim; cw = Math.round(w * maxDim / h); }
-
-            captureCanvas.width = cw;
-            captureCanvas.height = ch;
+            // Full-res capture for preview
+            captureCanvas.width = w;
+            captureCanvas.height = h;
             const ctx = captureCanvas.getContext('2d');
 
             ctx.save();
-            ctx.translate(cw, 0);
+            ctx.translate(w, 0);
             ctx.scale(-1, 1);
-            ctx.drawImage(video, 0, 0, cw, ch);
+            ctx.drawImage(video, 0, 0, w, h);
             ctx.restore();
 
-            capturedPhotoData = captureCanvas.toDataURL('image/jpeg', 0.85);
+            capturedPhotoData = captureCanvas.toDataURL('image/jpeg', 0.92);
+
+            // Downsized copy for submission
+            const maxDim = 1024;
+            let sw = w, sh = h;
+            if (w > h && w > maxDim) { sw = maxDim; sh = Math.round(h * maxDim / w); }
+            else if (h > maxDim) { sh = maxDim; sw = Math.round(w * maxDim / h); }
+
+            if (sw !== w || sh !== h) {
+                captureCanvas.width = sw;
+                captureCanvas.height = sh;
+                const sctx = captureCanvas.getContext('2d');
+                sctx.save();
+                sctx.translate(sw, 0);
+                sctx.scale(-1, 1);
+                sctx.drawImage(video, 0, 0, sw, sh);
+                sctx.restore();
+                submitPhotoData = captureCanvas.toDataURL('image/jpeg', 0.85);
+            } else {
+                submitPhotoData = capturedPhotoData;
+            }
 
             previewImg.src = capturedPhotoData;
             previewEl.classList.add('show');
@@ -741,7 +953,7 @@
 
         // --- Submission ---
         function submitPhoto() {
-            if (!capturedPhotoData) return;
+            if (!submitPhotoData) return;
 
             resetStatusScreen();
 
@@ -752,13 +964,14 @@
             showScreen('status-screen');
 
             socket.emit('submit_photo', {
-                photo: capturedPhotoData,
+                photo: submitPhotoData,
                 style: selectedStyle
             });
         }
 
         function resetForNewPhoto() {
             capturedPhotoData = null;
+            submitPhotoData = null;
             previewEl.classList.remove('show');
             reviewControls.classList.remove('show');
             captureControls.style.display = 'flex';
@@ -846,6 +1059,88 @@
 
         // --- Init ---
         startCamera();
+
+        // --- Localhost Debug Panel ---
+        if (location.hostname === 'localhost' || location.hostname === '127.0.0.1') {
+            const panel = document.createElement('div');
+            panel.innerHTML = `
+                <div id="debugPanel" style="position:fixed;bottom:0;left:0;right:0;z-index:9999;
+                    background:rgba(0,0,0,0.9);padding:10px 14px;display:flex;gap:8px;
+                    align-items:center;flex-wrap:wrap;font-size:13px;border-top:1px solid #333;">
+                    <span style="color:#f39c12;font-weight:600;margin-right:4px;">DEBUG</span>
+                    <button onclick="debugSim('send')">Send</button>
+                    <button onclick="debugSim('processing')">Generate</button>
+                    <button onclick="debugSim('drawing')">Draw</button>
+                    <button onclick="debugSim('complete')">Complete</button>
+                    <button onclick="debugSimRun()">Run All</button>
+                    <button onclick="resetForNewPhoto()">Reset</button>
+                </div>
+            `;
+            panel.querySelectorAll('button').forEach(b => {
+                Object.assign(b.style, {
+                    background:'#2a2a4a',color:'#ccc',border:'none',borderRadius:'6px',
+                    padding:'6px 12px',cursor:'pointer',fontSize:'12px'
+                });
+            });
+            document.body.appendChild(panel);
+
+            window.debugSim = function(phase) {
+                if (currentScreen !== 'status-screen') {
+                    resetStatusScreen();
+                    showScreen('status-screen');
+                }
+                setPhase(phase);
+                if (phase === 'send') {
+                    statusMessage.textContent = 'Sending to robot...';
+                    setProgress(0);
+                } else if (phase === 'processing') {
+                    statusMessage.textContent = 'Generating line art...';
+                    setProgress(0);
+                } else if (phase === 'drawing') {
+                    statusMessage.textContent = 'Drawing line 0/20';
+                    setProgress(0);
+                } else if (phase === 'complete') {
+                    setProgress(100);
+                    setPhase('complete');
+                    progressCenter.style.display = 'none';
+                    completeIcon.classList.add('show');
+                    statusMessage.textContent = 'Portrait complete!';
+                }
+            };
+
+            window.debugSimRun = function() {
+                const totalContours = 20;
+                resetStatusScreen();
+                showScreen('status-screen');
+
+                // Send phase
+                setPhase('send');
+                statusMessage.textContent = 'Sending to robot...';
+
+                setTimeout(() => {
+                    // Processing phase
+                    setPhase('processing');
+                    statusMessage.textContent = 'Generating line art...';
+                }, 1500);
+
+                setTimeout(() => {
+                    // Drawing phase - animate contours
+                    setPhase('drawing');
+                    let contour = 0;
+                    const interval = setInterval(() => {
+                        contour++;
+                        if (contour > totalContours) {
+                            clearInterval(interval);
+                            debugSim('complete');
+                            return;
+                        }
+                        const pct = Math.round(100 * contour / totalContours);
+                        setProgress(pct);
+                        statusMessage.textContent = `Drawing line ${contour}/${totalContours}`;
+                    }, 300);
+                }, 3500);
+            };
+        }
     </script>
 </body>
 </html>
