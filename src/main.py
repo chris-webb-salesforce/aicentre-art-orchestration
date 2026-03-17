@@ -622,7 +622,18 @@ class PortraitSystem:
                     with open(logo_path, 'r') as f:
                         logo_gcode = [line.strip() for line in f if line.strip()]
                     if logo_gcode:
-                        self.dexarm.stream_gcode(logo_gcode)
+                        # Remap Z values from gcode (0=down, positive=up)
+                        # to config values (z_down/z_up)
+                        import re
+                        remapped = []
+                        for line in logo_gcode:
+                            m = re.search(r'Z([-\d.]+)', line)
+                            if m:
+                                z_val = float(m.group(1))
+                                new_z = self.config.drawing.z_down if z_val <= 0 else self.config.drawing.z_up
+                                line = re.sub(r'Z[-\d.]+', f'Z{new_z}', line)
+                            remapped.append(line)
+                        self.dexarm.stream_gcode(remapped)
                 else:
                     logger.warning(f"Logo file not found: {logo_path}")
 
