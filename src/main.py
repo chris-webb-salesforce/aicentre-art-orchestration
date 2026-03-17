@@ -612,6 +612,20 @@ class PortraitSystem:
                 notify('error', 'Drawing failed')
                 return False
 
+            # Draw logo after portrait if enabled
+            if self.config.logo.enabled:
+                notify('drawing', 'Drawing logo...', 95)
+                logo_path = Path(self.config.logo.path)
+                if not logo_path.is_absolute():
+                    logo_path = Path(__file__).parent.parent / logo_path
+                if logo_path.exists():
+                    with open(logo_path, 'r') as f:
+                        logo_gcode = [line.strip() for line in f if line.strip()]
+                    if logo_gcode:
+                        self.dexarm.stream_gcode(logo_gcode)
+                else:
+                    logger.warning(f"Logo file not found: {logo_path}")
+
             # Return arm to home position (X0, Y300, Z0)
             self.dexarm.go_home()
 
