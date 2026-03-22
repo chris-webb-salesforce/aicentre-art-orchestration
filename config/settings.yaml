@@ -11,7 +11,7 @@ mycobot:
   pan_sensitivity: 0.05
   tilt_sensitivity: 0.05
 
-# Rotrics DexArm (Artist Arm)
+# Rotrics DexArm (Artist Arm) - shared defaults for all arms
 dexarm:
   port: "/dev/tty.usbmodem3187378532331"
   baud_rate: 115200
@@ -21,7 +21,7 @@ dexarm:
   travel_acceleration: 200    # Travel acceleration (mm/s²)
   jerk: 7.0                   # Jerk limit (mm/s) - lower = smoother direction changes
 
-# Drawing Bounds (mm)
+# Drawing Bounds (mm) - shared defaults for all arms
 drawing:
   x_min: -53.0
   x_max: 54.0
@@ -36,6 +36,39 @@ drawing:
     x: 0.0
     y: 300.0
     z: 30.0
+
+# Multiple Arms Configuration
+# Each arm overrides dexarm.port and optionally drawing bounds.
+# All other dexarm/drawing settings are inherited from the defaults above.
+arms:
+  - id: arm-1
+    label: "Station 1"
+    dexarm:
+      port: "/dev/tty.usbmodem3187378532331"
+    drawing:
+      z_up: -65.0
+      z_down: -70.0
+  - id: arm-2
+    label: "Station 2"
+    dexarm:
+      port: "/dev/tty.usbmodemXXXXXX2"
+    drawing:
+      z_up: -65.0
+      z_down: -70.0
+  - id: arm-3
+    label: "Station 3"
+    dexarm:
+      port: "/dev/tty.usbmodemXXXXXX3"
+    drawing:
+      z_up: -65.0
+      z_down: -70.0
+  - id: arm-4
+    label: "Station 4"
+    dexarm:
+      port: "/dev/tty.usbmodemXXXXXX4"
+    drawing:
+      z_up: -65.0
+      z_down: -70.0
 
 # Logo Settings (drawn above portrait)
 logo:

@@ -183,6 +183,15 @@ class SystemConfig:
 
 
 @dataclass
+class ArmConfig:
+    """Per-arm configuration. Overrides top-level dexarm/drawing defaults."""
+    id: str = ""
+    label: str = ""
+    dexarm: DexArmConfig = field(default_factory=DexArmConfig)
+    drawing: DrawingConfig = field(default_factory=DrawingConfig)
+
+
+@dataclass
 class Config:
     """Main configuration container."""
     mycobot: MyCobotConfig = field(default_factory=MyCobotConfig)
@@ -196,6 +205,7 @@ class Config:
     path_optimization: PathOptimizationConfig = field(default_factory=PathOptimizationConfig)
     personality: PersonalityConfig = field(default_factory=PersonalityConfig)
     system: SystemConfig = field(default_factory=SystemConfig)
+    arms: List[ArmConfig] = field(default_factory=list)
 
 
 def _dict_to_dataclass(data: dict, cls):
@@ -303,6 +313,26 @@ def load_config(config_path: Optional[str] = None) -> Config:
         personality=_dict_to_dataclass(data.get('personality'), PersonalityConfig),
         system=_dict_to_dataclass(data.get('system'), SystemConfig),
     )
+
+    # Parse per-arm configs, merging with top-level defaults
+    for arm_data in data.get('arms', []):
+        arm_dexarm_yaml = arm_data.get('dexarm', {})
+        arm_drawing_yaml = arm_data.get('drawing', {})
+        arm_dexarm = _dict_to_dataclass(arm_dexarm_yaml, DexArmConfig)
+        arm_drawing = _dict_to_dataclass(arm_drawing_yaml, DrawingConfig)
+        # Fill in fields not explicitly set in per-arm YAML from top-level config
+        for f in DexArmConfig.__dataclass_fields__:
+            if f not in arm_dexarm_yaml:
+                setattr(arm_dexarm, f, getattr(config.dexarm, f))
+        for f in DrawingConfig.__dataclass_fields__:
+            if f not in arm_drawing_yaml:
+                setattr(arm_drawing, f, getattr(config.drawing, f))
+        config.arms.append(ArmConfig(
+            id=arm_data['id'],
+            label=arm_data.get('label', arm_data['id']),
+            dexarm=arm_dexarm,
+            drawing=arm_drawing,
+        ))
 
     return config
 

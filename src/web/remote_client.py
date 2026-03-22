@@ -5,11 +5,13 @@ Runs on the local machine alongside the robot hardware. Connects outbound
 to the Heroku server via WebSocket, receives photo submissions, and triggers
 the portrait drawing pipeline.
 
+Each arm runs as a separate process with its own --arm-id.
+
 Usage:
-    python -m src.web.remote_client --server https://your-app.herokuapp.com
+    python -m src.web.remote_client --server https://your-app.herokuapp.com --arm-id arm-1
 
     # With mock AI (no OpenAI calls):
-    python -m src.web.remote_client --server https://your-app.herokuapp.com --mock
+    python -m src.web.remote_client --server https://your-app.herokuapp.com --arm-id arm-1 --mock
 """
 
 import os
@@ -17,8 +19,8 @@ import sys
 import base64
 import logging
 import argparse
-import time
 from pathlib import Path
+from urllib.parse import urlencode
 
 import cv2
 import numpy as np
@@ -33,7 +35,6 @@ load_dotenv()
 
 from src.config import load_config, validate_config
 from src.main import PortraitSystem
-from src.personality import IdleDance
 
 logger = logging.getLogger(__name__)
 
@@ -43,14 +44,14 @@ class RemoteClient:
     Connects to the Heroku relay server and processes incoming photo jobs.
     """
 
-    def __init__(self, server_url: str, portrait_system: PortraitSystem, token: str = ''):
+    def __init__(self, server_url: str, portrait_system: PortraitSystem,
+                 arm_id: str, label: str = '', token: str = ''):
         self.server_url = server_url.rstrip('/')
         self.system = portrait_system
+        self.arm_id = arm_id
+        self.label = label or arm_id
         self.token = token
         self._is_busy = False
-
-        # Idle dance animation (runs while waiting for jobs)
-        self.idle_dance = IdleDance(portrait_system.dexarm, speed=10000)
 
         self.sio = socketio.Client(
             reconnection=True,
@@ -64,14 +65,15 @@ class RemoteClient:
     def _register_handlers(self):
         @self.sio.on('connect', namespace='/robot')
         def on_connect():
-            logger.info("Connected to relay server")
-            self.sio.emit('ready', {}, namespace='/robot')
-            # self.idle_dance.start()
+            logger.info(f"Connected to relay server as '{self.arm_id}'")
+            self.sio.emit('ready', {
+                'arm_id': self.arm_id,
+                'label': self.label,
+            }, namespace='/robot')
 
         @self.sio.on('disconnect', namespace='/robot')
         def on_disconnect():
             logger.warning("Disconnected from relay server")
-            # self.idle_dance.stop()
 
         @self.sio.on('new_job', namespace='/robot')
         def on_new_job(data):
@@ -79,11 +81,14 @@ class RemoteClient:
 
     def connect(self):
         """Connect to the Heroku relay server."""
-        url = self.server_url
+        params = {}
         if self.token:
-            url = f"{url}?token={self.token}"
+            params['token'] = self.token
+        params['arm_id'] = self.arm_id
 
-        logger.info(f"Connecting to {self.server_url} ...")
+        url = f"{self.server_url}?{urlencode(params)}"
+
+        logger.info(f"Connecting to {self.server_url} as arm '{self.arm_id}'...")
         self.sio.connect(url, namespaces=['/robot'],
                          transports=['websocket', 'polling'])
 
@@ -112,6 +117,7 @@ class RemoteClient:
 
         photo_b64 = data.get('photo')
         style = data.get('style', 'minimal')
+        job_id = data.get('job_id', 'unknown')
 
         if not photo_b64:
             self.sio.emit('job_error', {
@@ -120,7 +126,6 @@ class RemoteClient:
             return
 
         self._is_busy = True
-        # self.idle_dance.stop()
 
         try:
             # Decode the base64 photo
@@ -140,7 +145,7 @@ class RemoteClient:
                 }, namespace='/robot')
                 return
 
-            logger.info(f"Received photo ({image.shape}), style: {style}")
+            logger.info(f"[{self.arm_id}] Received job {job_id} ({image.shape}), style: {style}")
 
             # Run the portrait pipeline
             def status_callback(status, message, percent=0):
@@ -152,14 +157,14 @@ class RemoteClient:
 
             if success:
                 self.sio.emit('job_complete', {}, namespace='/robot')
-                logger.info("Drawing complete")
+                logger.info(f"[{self.arm_id}] Drawing complete for job {job_id}")
             else:
                 self.sio.emit('job_error', {
                     'message': 'Drawing pipeline failed'
                 }, namespace='/robot')
 
         except Exception as e:
-            logger.error(f"Job processing error: {e}")
+            logger.error(f"[{self.arm_id}] Job processing error: {e}")
             import traceback
             traceback.print_exc()
             self.sio.emit('job_error', {
@@ -168,13 +173,14 @@ class RemoteClient:
 
         finally:
             self._is_busy = False
-            # self.idle_dance.start()
 
 
 def main():
     parser = argparse.ArgumentParser(description="Remote client for portrait relay server")
     parser.add_argument('--server', type=str, required=True,
                         help='Heroku relay server URL (e.g. https://your-app.herokuapp.com)')
+    parser.add_argument('--arm-id', type=str, required=True,
+                        help='Unique arm identifier (must match an entry in config arms list)')
     parser.add_argument('--token', type=str, default=os.environ.get('ROBOT_TOKEN', ''),
                         help='Authentication token for robot connection')
     parser.add_argument('--mock', action='store_true',
@@ -203,6 +209,17 @@ def main():
             if not args.mock:
                 sys.exit(1)
 
+    # Resolve per-arm config
+    arm_config = next((a for a in config.arms if a.id == args.arm_id), None)
+    label = args.arm_id
+    if arm_config:
+        config.dexarm = arm_config.dexarm
+        config.drawing = arm_config.drawing
+        label = arm_config.label
+        logger.info(f"Using arm config '{args.arm_id}': port={arm_config.dexarm.port}")
+    else:
+        logger.warning(f"No arm config found for '{args.arm_id}', using top-level defaults")
+
     # Create and initialize the portrait system (remote mode: DexArm only)
     system = PortraitSystem(
         config,
@@ -211,17 +228,22 @@ def main():
         remote_mode=True
     )
 
-    logger.info("Initializing portrait system...")
+    logger.info(f"Initializing portrait system for arm '{args.arm_id}'...")
     if not system.initialize():
         logger.error("Failed to initialize portrait system")
         sys.exit(1)
 
     # Create and connect the remote client
-    client = RemoteClient(args.server, system, token=args.token)
+    client = RemoteClient(
+        args.server, system,
+        arm_id=args.arm_id,
+        label=label,
+        token=args.token,
+    )
 
     try:
         client.connect()
-        logger.info("Remote client running. Waiting for photo submissions...")
+        logger.info(f"Remote client '{args.arm_id}' running. Waiting for photo submissions...")
         client.wait()
     except KeyboardInterrupt:
         logger.info("Interrupted by user")

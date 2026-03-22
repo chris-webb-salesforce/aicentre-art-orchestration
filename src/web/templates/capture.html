@@ -621,6 +621,106 @@
             width: auto;
             opacity: 0.9;
         }
+
+        /* ---- Fleet Status Bar ---- */
+        .fleet-bar {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: rgba(0,0,0,0.7);
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+            padding: 10px 16px;
+            padding-bottom: max(10px, env(safe-area-inset-bottom));
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+            align-items: center;
+            flex-wrap: wrap;
+            z-index: 90;
+        }
+
+        .fleet-bar.hidden { display: none; }
+
+        .arm-pill {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 14px;
+            border-radius: 20px;
+            font-size: 0.72rem;
+            letter-spacing: 0.3px;
+            border: 1px solid rgba(255,255,255,0.1);
+            background: rgba(255,255,255,0.05);
+            transition: all 0.3s ease;
+        }
+
+        .arm-pill .arm-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            flex-shrink: 0;
+        }
+
+        .arm-pill[data-status="idle"] .arm-dot { background: #27ae60; }
+        .arm-pill[data-status="processing"] .arm-dot { background: #f39c12; }
+        .arm-pill[data-status="drawing"] .arm-dot { background: #667eea; }
+        .arm-pill[data-status="complete"] .arm-dot { background: #27ae60; }
+        .arm-pill[data-status="error"] .arm-dot { background: #e74c3c; }
+
+        .arm-pill[data-status="complete"],
+        .arm-pill[data-status="error"] {
+            cursor: pointer;
+            border-color: rgba(255,255,255,0.25);
+        }
+
+        .arm-pill[data-status="complete"]:active,
+        .arm-pill[data-status="error"]:active {
+            transform: scale(0.95);
+        }
+
+        .arm-pill .arm-label { color: #aaa; }
+        .arm-pill .arm-status-text {
+            color: #666;
+            font-size: 0.65rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .fleet-queue {
+            color: #f39c12;
+            font-size: 0.72rem;
+            margin-left: 8px;
+            letter-spacing: 0.3px;
+        }
+
+        /* Queue banner on status screen */
+        .queue-banner {
+            display: none;
+            font-size: 0.9rem;
+            color: #f39c12;
+            margin-bottom: 16px;
+            letter-spacing: 0.3px;
+        }
+
+        .queue-banner.show { display: block; }
+
+        /* Light mode fleet bar */
+        html.light .fleet-bar {
+            background: rgba(255,255,255,0.85);
+            border-top: 1px solid rgba(0,0,0,0.08);
+        }
+
+        html.light .arm-pill {
+            border-color: rgba(0,0,0,0.1);
+            background: rgba(0,0,0,0.03);
+        }
+
+        html.light .arm-pill .arm-label { color: #555; }
+        html.light .arm-pill .arm-status-text { color: #999; }
+        html.light .fleet-queue { color: #e67e22; }
+        html.light .queue-banner { color: #e67e22; }
     </style>
 </head>
 <body>
@@ -741,6 +841,8 @@
                 </div>
             </div>
 
+            <div class="queue-banner" id="queueBanner">Position <span id="queuePos">-</span> in queue</div>
+
             <div class="status-message" id="statusMessage">Sending to robot...</div>
 
             <div class="status-action">
@@ -748,6 +850,9 @@
             </div>
         </div>
     </div>
+
+    <!-- Fleet status bar -->
+    <div class="fleet-bar hidden" id="fleetBar"></div>
 
     <!-- Hidden canvas for photo capture -->
     <canvas id="captureCanvas" style="display: none;"></canvas>
@@ -759,6 +864,7 @@
         let capturedPhotoData = null;
         let cameraStream = null;
         let robotConnected = false;
+        let myJobId = null;
         const RING_CIRCUMFERENCE = 2 * Math.PI * 52;
 
         // --- Elements ---
@@ -779,6 +885,9 @@
         const completeIcon = document.getElementById('completeIcon');
         const connectionBar = document.getElementById('connectionBar');
         const statusBackdrop = document.getElementById('statusBackdrop');
+        const fleetBar = document.getElementById('fleetBar');
+        const queueBanner = document.getElementById('queueBanner');
+        const queuePos = document.getElementById('queuePos');
 
         const phases = {
             send: document.getElementById('phaseSend'),
@@ -840,6 +949,7 @@
             newPhotoBtn.style.display = 'none';
             statusBackdrop.classList.remove('visible');
             statusMessage.textContent = 'Sending to robot...';
+            queueBanner.classList.remove('show');
         }
 
         // --- Camera ---
@@ -991,26 +1101,47 @@
             connectionBar.textContent = 'Connection lost - reconnecting...';
         });
 
-        socket.on('state', (data) => {
-            robotConnected = data.robot_connected;
+        // --- Multi-arm: overview event (replaces old 'state') ---
+        socket.on('overview', (data) => {
+            robotConnected = data.any_connected;
             updateConnectionUI();
+            renderFleetBar(data.arms, data.queue_depth);
+        });
 
-            if (data.status !== 'idle' && currentScreen === 'camera-screen') {
-                resetStatusScreen();
-                showScreen('status-screen');
-                statusMessage.textContent = data.message || 'Processing...';
-                if (data.percent > 0) setProgress(data.percent);
-                setPhase(data.status);
+        // Server confirms our job is queued
+        socket.on('queued', (data) => {
+            myJobId = data.job_id;
+            if (data.position > 0) {
+                queueBanner.classList.add('show');
+                queuePos.textContent = data.position;
+                statusMessage.textContent = `Waiting in queue (position ${data.position})...`;
+                setPhase('queued');
+            } else {
+                queueBanner.classList.remove('show');
             }
         });
 
         socket.on('status', (data) => {
+            // Only process status events for our own job
+            if (myJobId && data.job_id && data.job_id !== myJobId) return;
+
             if (currentScreen !== 'status-screen') {
                 resetStatusScreen();
                 showScreen('status-screen');
             }
 
-            statusMessage.textContent = data.message || 'Processing...';
+            // Hide queue banner once drawing starts
+            if (data.status === 'processing' || data.status === 'drawing') {
+                queueBanner.classList.remove('show');
+                if (data.label) {
+                    statusMessage.textContent = data.message || `Drawing on ${data.label}...`;
+                } else {
+                    statusMessage.textContent = data.message || 'Processing...';
+                }
+            } else {
+                statusMessage.textContent = data.message || 'Processing...';
+            }
+
             setPhase(data.status);
 
             if (data.percent > 0) setProgress(data.percent);
@@ -1021,6 +1152,7 @@
                 progressCenter.style.display = 'none';
                 completeIcon.classList.add('show');
                 statusMessage.textContent = 'Portrait complete!';
+                myJobId = null;
 
                 setTimeout(() => {
                     if (currentScreen === 'status-screen') {
@@ -1028,12 +1160,19 @@
                     }
                 }, 5000);
             }
+
+            if (data.status === 'error') {
+                myJobId = null;
+                newPhotoBtn.style.display = 'inline-block';
+            }
         });
 
         socket.on('error', (data) => {
             if (currentScreen === 'status-screen') {
                 statusMessage.textContent = data.message || 'An error occurred';
                 newPhotoBtn.style.display = 'inline-block';
+                queueBanner.classList.remove('show');
+                myJobId = null;
             } else {
                 alert(data.message || 'An error occurred');
             }
@@ -1042,13 +1181,50 @@
         function updateConnectionUI() {
             if (!robotConnected) {
                 connectionBar.className = 'connection-bar no-robot';
-                connectionBar.textContent = 'Robot is offline';
+                connectionBar.textContent = 'All robots offline';
                 submitBtn.disabled = true;
             } else {
                 connectionBar.className = 'connection-bar';
                 connectionBar.textContent = '';
                 submitBtn.disabled = false;
             }
+        }
+
+        // --- Fleet bar rendering ---
+        function renderFleetBar(arms, queueDepth) {
+            if (!arms || arms.length === 0) {
+                fleetBar.classList.add('hidden');
+                return;
+            }
+            fleetBar.classList.remove('hidden');
+
+            const statusLabels = {
+                idle: 'Ready',
+                processing: 'Generating',
+                drawing: 'Drawing',
+                complete: 'Done — tap to reset',
+                error: 'Error — tap to reset',
+            };
+
+            let html = arms.map(a => {
+                const clickable = (a.status === 'complete' || a.status === 'error');
+                const onclick = clickable ? `onclick="confirmReady('${a.arm_id}')"` : '';
+                return `<div class="arm-pill" data-status="${a.status}" ${onclick}>
+                    <span class="arm-dot"></span>
+                    <span class="arm-label">${a.label || a.arm_id}</span>
+                    <span class="arm-status-text">${statusLabels[a.status] || a.status}</span>
+                </div>`;
+            }).join('');
+
+            if (queueDepth > 0) {
+                html += `<span class="fleet-queue">${queueDepth} in queue</span>`;
+            }
+
+            fleetBar.innerHTML = html;
+        }
+
+        function confirmReady(armId) {
+            socket.emit('confirm_ready', { arm_id: armId });
         }
 
         // --- Event Listeners ---
