@@ -71,7 +71,8 @@ class ArmSlot:
     arm_id: str
     sid: str
     label: str = ''
-    status: str = 'idle'  # idle | processing | drawing | complete | error
+    status: str = 'idle'  # idle | processing | drawing | complete | error | testing
+    config: dict = field(default_factory=dict)  # last reported config from the arm
 
 
 @dataclass
@@ -199,11 +200,34 @@ class ArmPool:
                     return slot
         return None
 
+    def set_arm_testing(self, arm_id: str):
+        """Put arm into testing mode (blocks job dispatch)."""
+        with self._lock:
+            if arm_id in self.arms and self.arms[arm_id].status == 'idle':
+                self.arms[arm_id].status = 'testing'
+                return True
+        return False
+
+    def set_arm_idle(self, arm_id: str):
+        """Return arm from testing mode to idle."""
+        with self._lock:
+            if arm_id in self.arms and self.arms[arm_id].status == 'testing':
+                self.arms[arm_id].status = 'idle'
+                return True
+        return False
+
+    def update_arm_config(self, arm_id: str, config: dict):
+        """Store arm's reported config."""
+        with self._lock:
+            if arm_id in self.arms:
+                self.arms[arm_id].config = config
+
     def get_overview(self):
         with self._lock:
             return {
                 'arms': [
-                    {'arm_id': s.arm_id, 'label': s.label, 'status': s.status}
+                    {'arm_id': s.arm_id, 'label': s.label, 'status': s.status,
+                     'config': s.config}
                     for s in self.arms.values()
                 ],
                 'queue_depth': len(self.queue),
@@ -279,6 +303,13 @@ def capture():
     return render_template('capture.html', light_mode=light_mode)
 
 
+@app.route('/operator')
+@require_auth
+def operator():
+    light_mode = os.environ.get('LIGHT_MODE', 'false').lower() == 'true'
+    return render_template('operator.html', light_mode=light_mode)
+
+
 @app.route('/api/status')
 def api_status():
     return jsonify(pool.get_overview())
@@ -344,6 +375,94 @@ def handle_confirm_ready(data):
         _try_dispatch()
 
 
+# --- SocketIO: Operator commands (on /capture namespace) ---
+
+@socketio.on('request_config', namespace='/capture')
+def handle_request_config(data):
+    """Operator requests current config from an arm."""
+    arm_id = data.get('arm_id')
+    if not arm_id:
+        return
+    with pool._lock:
+        slot = pool.arms.get(arm_id)
+    if slot:
+        socketio.emit('get_config', {}, namespace='/robot', to=slot.sid)
+        logger.info(f"Config requested for arm '{arm_id}'")
+
+
+@socketio.on('update_config', namespace='/capture')
+def handle_update_config(data):
+    """Operator sends config update to an arm."""
+    arm_id = data.get('arm_id')
+    config = data.get('config', {})
+    if not arm_id or not config:
+        return
+    with pool._lock:
+        slot = pool.arms.get(arm_id)
+    if slot:
+        socketio.emit('config_update', {'config': config},
+                       namespace='/robot', to=slot.sid)
+        logger.info(f"Config update sent to arm '{arm_id}': {config}")
+
+
+@socketio.on('save_config', namespace='/capture')
+def handle_save_config(data):
+    """Operator requests arm to persist config to YAML."""
+    arm_id = data.get('arm_id')
+    if not arm_id:
+        return
+    with pool._lock:
+        slot = pool.arms.get(arm_id)
+    if slot:
+        socketio.emit('config_save', {}, namespace='/robot', to=slot.sid)
+        logger.info(f"Config save requested for arm '{arm_id}'")
+
+
+@socketio.on('test_pen_start', namespace='/capture')
+def handle_test_pen_start(data):
+    """Operator starts pen height test on an arm."""
+    arm_id = data.get('arm_id')
+    if not arm_id:
+        return
+    if not pool.set_arm_testing(arm_id):
+        emit('error', {'message': f'Arm {arm_id} is not idle — cannot start test'})
+        return
+    with pool._lock:
+        slot = pool.arms.get(arm_id)
+    if slot:
+        socketio.emit('test_pen_start', {}, namespace='/robot', to=slot.sid)
+        _broadcast_overview()
+        logger.info(f"Pen test started on arm '{arm_id}'")
+
+
+@socketio.on('test_pen_move', namespace='/capture')
+def handle_test_pen_move(data):
+    """Operator moves pen to a specific Z height during test."""
+    arm_id = data.get('arm_id')
+    z = data.get('z')
+    if not arm_id or z is None:
+        return
+    with pool._lock:
+        slot = pool.arms.get(arm_id)
+        if slot and slot.status != 'testing':
+            return
+    if slot:
+        socketio.emit('test_pen_move', {'z': z}, namespace='/robot', to=slot.sid)
+
+
+@socketio.on('test_pen_stop', namespace='/capture')
+def handle_test_pen_stop(data):
+    """Operator ends pen height test. Arm will ack when cleanup is done."""
+    arm_id = data.get('arm_id')
+    if not arm_id:
+        return
+    with pool._lock:
+        slot = pool.arms.get(arm_id)
+    if slot:
+        socketio.emit('test_pen_stop', {}, namespace='/robot', to=slot.sid)
+        logger.info(f"Pen test stop requested for arm '{arm_id}'")
+
+
 # --- SocketIO: Robot connection (/robot namespace) ---
 
 @socketio.on('connect', namespace='/robot')
@@ -365,6 +484,61 @@ def robot_ready(data):
     logger.info(f"Arm '{arm_id}' ({label}) ready")
     _broadcast_overview()
     _try_dispatch()
+
+
+@socketio.on('arm_config', namespace='/robot')
+def robot_arm_config(data):
+    """Arm reports its current config."""
+    slot = pool.arm_from_sid(request.sid)
+    if not slot:
+        return
+    config = data.get('config', {})
+    pool.update_arm_config(slot.arm_id, config)
+    # Forward to all operator/capture clients
+    socketio.emit('arm_config', {
+        'arm_id': slot.arm_id,
+        'config': config,
+    }, namespace='/capture')
+    _broadcast_overview()
+
+
+@socketio.on('config_saved', namespace='/robot')
+def robot_config_saved(data):
+    """Arm confirms config was saved to YAML."""
+    slot = pool.arm_from_sid(request.sid)
+    if not slot:
+        return
+    success = data.get('success', False)
+    socketio.emit('config_saved', {
+        'arm_id': slot.arm_id,
+        'success': success,
+    }, namespace='/capture')
+    logger.info(f"Arm '{slot.arm_id}' config save: {'success' if success else 'failed'}")
+
+
+@socketio.on('test_pen_status', namespace='/robot')
+def robot_test_pen_status(data):
+    """Arm reports pen position during test."""
+    slot = pool.arm_from_sid(request.sid)
+    if not slot:
+        return
+    socketio.emit('test_pen_status', {
+        'arm_id': slot.arm_id,
+        'z': data.get('z'),
+        'mode': data.get('mode'),
+    }, namespace='/capture')
+
+
+@socketio.on('test_pen_stopped', namespace='/robot')
+def robot_test_pen_stopped(data=None):
+    """Arm confirms test mode cleanup is done — safe to dispatch."""
+    slot = pool.arm_from_sid(request.sid)
+    if not slot:
+        return
+    pool.set_arm_idle(slot.arm_id)
+    _broadcast_overview()
+    _try_dispatch()
+    logger.info(f"Arm '{slot.arm_id}' test mode ended, now idle")
 
 
 @socketio.on('disconnect', namespace='/robot')

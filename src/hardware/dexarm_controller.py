@@ -484,6 +484,81 @@ class DexArmController:
             logger.error(f"Failed to perform practice strokes: {e}")
             return False
 
+    def update_config(self, z_up: float = None, z_down: float = None,
+                      feedrate: int = None, travel_feedrate: int = None,
+                      acceleration: int = None, travel_acceleration: int = None,
+                      jerk: float = None) -> bool:
+        """
+        Update runtime configuration. Only provided values are changed.
+        Sends new acceleration/jerk to firmware if changed.
+        """
+        if z_up is not None:
+            self.z_up = z_up
+        if z_down is not None:
+            self.z_down = z_down
+        if feedrate is not None:
+            self.feedrate = feedrate
+        if travel_feedrate is not None:
+            self.travel_feedrate = travel_feedrate
+
+        firmware_update = False
+        if acceleration is not None and acceleration != self.acceleration:
+            self.acceleration = acceleration
+            firmware_update = True
+        if travel_acceleration is not None and travel_acceleration != self.travel_acceleration:
+            self.travel_acceleration = travel_acceleration
+            firmware_update = True
+        if jerk is not None and jerk != self.jerk:
+            self.jerk = jerk
+            firmware_update = True
+
+        if firmware_update and self.is_available():
+            try:
+                self.arm.set_acceleration(
+                    acceleration=self.acceleration,
+                    travel_acceleration=self.travel_acceleration,
+                    retract_acceleration=60
+                )
+                self.arm._send_cmd(f"M205 X{self.jerk} Y{self.jerk} Z{self.jerk}\r")
+                logger.info(f"Firmware updated: accel={self.acceleration}, jerk={self.jerk}")
+            except Exception as e:
+                logger.error(f"Failed to update firmware settings: {e}")
+                return False
+
+        logger.info(f"Config updated: z_up={self.z_up}, z_down={self.z_down}, "
+                     f"feedrate={self.feedrate}, travel_feedrate={self.travel_feedrate}")
+        return True
+
+    def move_to_z(self, z: float) -> bool:
+        """Move pen to a specific Z height at current X/Y position."""
+        if not self.is_available():
+            return False
+        try:
+            x, y, _ = self._current_position
+            self.arm.move_to(x, y, z, self.feedrate)
+            self._current_position = (x, y, z)
+            self._pen_is_down = z <= self.z_down
+            return True
+        except Exception as e:
+            logger.error(f"Failed to move to Z={z}: {e}")
+            return False
+
+    def get_config(self) -> dict:
+        """Return current runtime config as a dict."""
+        return {
+            'drawing': {
+                'z_up': self.z_up,
+                'z_down': self.z_down,
+            },
+            'dexarm': {
+                'feedrate': self.feedrate,
+                'travel_feedrate': self.travel_feedrate,
+                'acceleration': self.acceleration,
+                'travel_acceleration': self.travel_acceleration,
+                'jerk': self.jerk,
+            },
+        }
+
     def release(self):
         """Release resources and move to safe position."""
         if self.is_available():

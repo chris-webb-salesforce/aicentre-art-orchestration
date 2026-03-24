@@ -35,6 +35,7 @@ load_dotenv()
 
 from src.config import load_config, validate_config
 from src.main import PortraitSystem
+from src.planning.gcode_generator import DrawingBounds
 
 logger = logging.getLogger(__name__)
 
@@ -45,13 +46,16 @@ class RemoteClient:
     """
 
     def __init__(self, server_url: str, portrait_system: PortraitSystem,
-                 arm_id: str, label: str = '', token: str = ''):
+                 arm_id: str, label: str = '', token: str = '',
+                 config_path: str = None):
         self.server_url = server_url.rstrip('/')
         self.system = portrait_system
         self.arm_id = arm_id
         self.label = label or arm_id
         self.token = token
+        self.config_path = config_path
         self._is_busy = False
+        self._is_testing = False
 
         self.sio = socketio.Client(
             reconnection=True,
@@ -70,6 +74,8 @@ class RemoteClient:
                 'arm_id': self.arm_id,
                 'label': self.label,
             }, namespace='/robot')
+            # Report config on connect so operator panel has it immediately
+            self._handle_get_config()
 
         @self.sio.on('disconnect', namespace='/robot')
         def on_disconnect():
@@ -78,6 +84,42 @@ class RemoteClient:
         @self.sio.on('new_job', namespace='/robot')
         def on_new_job(data):
             self._handle_job(data)
+
+        @self.sio.on('get_config', namespace='/robot')
+        def on_get_config(data=None):
+            self._handle_get_config()
+
+        @self.sio.on('config_update', namespace='/robot')
+        def on_config_update(data):
+            self._handle_config_update(data)
+
+        @self.sio.on('config_save', namespace='/robot')
+        def on_config_save(data=None):
+            self._handle_config_save()
+
+        @self.sio.on('test_pen_start', namespace='/robot')
+        def on_test_pen_start(data=None):
+            try:
+                logger.info(f"[{self.arm_id}] Received test_pen_start")
+                self._handle_test_pen_start()
+            except Exception as e:
+                logger.error(f"[{self.arm_id}] test_pen_start error: {e}", exc_info=True)
+
+        @self.sio.on('test_pen_move', namespace='/robot')
+        def on_test_pen_move(data):
+            try:
+                logger.info(f"[{self.arm_id}] Received test_pen_move: {data}")
+                self._handle_test_pen_move(data)
+            except Exception as e:
+                logger.error(f"[{self.arm_id}] test_pen_move error: {e}", exc_info=True)
+
+        @self.sio.on('test_pen_stop', namespace='/robot')
+        def on_test_pen_stop(data=None):
+            try:
+                logger.info(f"[{self.arm_id}] Received test_pen_stop")
+                self._handle_test_pen_stop()
+            except Exception as e:
+                logger.error(f"[{self.arm_id}] test_pen_stop error: {e}", exc_info=True)
 
     def connect(self):
         """Connect to the Heroku relay server."""
@@ -107,11 +149,167 @@ class RemoteClient:
         except Exception as e:
             logger.warning(f"Failed to send status: {e}")
 
+    def _handle_get_config(self):
+        """Report current config back to server."""
+        config = self.system.dexarm.get_config()
+        # Add drawing bounds from the gcode generator
+        if self.system.gcode_generator:
+            b = self.system.gcode_generator.bounds
+            config['drawing'].update({
+                'x_min': b.x_min, 'x_max': b.x_max,
+                'y_min': b.y_min, 'y_max': b.y_max,
+            })
+        self.sio.emit('arm_config', {
+            'arm_id': self.arm_id,
+            'config': config,
+        }, namespace='/robot')
+        logger.info(f"[{self.arm_id}] Reported config")
+
+    def _handle_config_update(self, data):
+        """Apply config changes at runtime."""
+        config = data.get('config', {})
+        drawing = config.get('drawing', {})
+        dexarm = config.get('dexarm', {})
+
+        # Update DexArmController
+        self.system.dexarm.update_config(
+            z_up=drawing.get('z_up'),
+            z_down=drawing.get('z_down'),
+            feedrate=dexarm.get('feedrate'),
+            travel_feedrate=dexarm.get('travel_feedrate'),
+            acceleration=dexarm.get('acceleration'),
+            travel_acceleration=dexarm.get('travel_acceleration'),
+            jerk=dexarm.get('jerk'),
+        )
+
+        # Update GCodeGenerator bounds if drawing config changed
+        if drawing and self.system.gcode_generator:
+            b = self.system.gcode_generator.bounds
+            self.system.gcode_generator.bounds = DrawingBounds(
+                x_min=drawing.get('x_min', b.x_min),
+                x_max=drawing.get('x_max', b.x_max),
+                y_min=drawing.get('y_min', b.y_min),
+                y_max=drawing.get('y_max', b.y_max),
+                z_up=drawing.get('z_up', b.z_up),
+                z_down=drawing.get('z_down', b.z_down),
+                feedrate=dexarm.get('feedrate', b.feedrate),
+                travel_feedrate=dexarm.get('travel_feedrate', b.travel_feedrate),
+                flip_x=drawing.get('flip_x', b.flip_x),
+                flip_y=drawing.get('flip_y', b.flip_y),
+            )
+
+        logger.info(f"[{self.arm_id}] Config updated: {config}")
+        # Report back the new config
+        self._handle_get_config()
+
+    def _handle_config_save(self):
+        """Persist current config to settings.yaml."""
+        import yaml
+
+        success = False
+        try:
+            config_path = self.config_path
+            if not config_path:
+                config_path = str(Path(__file__).parent.parent.parent / 'config' / 'settings.yaml')
+
+            with open(config_path, 'r') as f:
+                data = yaml.safe_load(f)
+
+            # Find and update this arm's config
+            arms_list = data.get('arms', [])
+            found = False
+            for arm_data in arms_list:
+                if arm_data.get('id') == self.arm_id:
+                    found = True
+                    # Update drawing values
+                    if 'drawing' not in arm_data:
+                        arm_data['drawing'] = {}
+                    arm_data['drawing']['z_up'] = self.system.dexarm.z_up
+                    arm_data['drawing']['z_down'] = self.system.dexarm.z_down
+                    # Update dexarm values
+                    if 'dexarm' not in arm_data:
+                        arm_data['dexarm'] = {}
+                    arm_data['dexarm']['feedrate'] = self.system.dexarm.feedrate
+                    arm_data['dexarm']['travel_feedrate'] = self.system.dexarm.travel_feedrate
+                    arm_data['dexarm']['acceleration'] = self.system.dexarm.acceleration
+                    arm_data['dexarm']['travel_acceleration'] = self.system.dexarm.travel_acceleration
+                    arm_data['dexarm']['jerk'] = self.system.dexarm.jerk
+                    break
+
+            if not found:
+                logger.error(f"[{self.arm_id}] Arm ID not found in YAML arms list — config NOT saved")
+            else:
+                with open(config_path, 'w') as f:
+                    yaml.dump(data, f, default_flow_style=False, sort_keys=False)
+                success = True
+                logger.info(f"[{self.arm_id}] Config saved to {config_path}")
+
+        except Exception as e:
+            logger.error(f"[{self.arm_id}] Failed to save config: {e}")
+
+        self.sio.emit('config_saved', {
+            'arm_id': self.arm_id,
+            'success': success,
+        }, namespace='/robot')
+
+    def _handle_test_pen_start(self):
+        """Enter pen test mode — move to center of drawing bounds."""
+        if self._is_busy:
+            return
+        self._is_testing = True
+        dexarm = self.system.dexarm
+        logger.info(f"[{self.arm_id}] DexArm available: {dexarm.is_available()}, arm: {dexarm.arm}, initialized: {dexarm._is_initialized}")
+        if self.system.gcode_generator:
+            b = self.system.gcode_generator.bounds
+            cx = (b.x_min + b.x_max) / 2
+            cy = (b.y_min + b.y_max) / 2
+        else:
+            cx, cy = 0.0, 300.0
+        result = dexarm.move_to(cx, cy, dexarm.z_up)
+        logger.info(f"[{self.arm_id}] Pen test move_to({cx}, {cy}, {dexarm.z_up}) returned: {result}")
+        self.sio.emit('test_pen_status', {
+            'arm_id': self.arm_id,
+            'z': dexarm.z_up,
+            'mode': 'up',
+        }, namespace='/robot')
+        logger.info(f"[{self.arm_id}] Pen test started at ({cx}, {cy})")
+
+    def _handle_test_pen_move(self, data):
+        """Move pen to specific Z during test."""
+        if not self._is_testing:
+            logger.warning(f"[{self.arm_id}] test_pen_move ignored — not in testing mode")
+            return
+        z = data.get('z')
+        if z is None:
+            return
+        z = float(z)
+        result = self.system.dexarm.move_to_z(z)
+        logger.info(f"[{self.arm_id}] move_to_z({z}) returned: {result}")
+        mode = 'down' if z <= self.system.dexarm.z_down else 'up'
+        self.sio.emit('test_pen_status', {
+            'arm_id': self.arm_id,
+            'z': z,
+            'mode': mode,
+        }, namespace='/robot')
+
+    def _handle_test_pen_stop(self):
+        """Exit pen test mode — return to safe position, then ack."""
+        self._is_testing = False
+        self.system.dexarm.pen_up()
+        self.system.dexarm.go_to_safe_position(
+            self.system.config.drawing.safe_position.get('x', 0),
+            self.system.config.drawing.safe_position.get('y', 300),
+            self.system.config.drawing.safe_position.get('z', 30),
+        )
+        # Ack to server — arm is now safe for dispatch
+        self.sio.emit('test_pen_stopped', {}, namespace='/robot')
+        logger.info(f"[{self.arm_id}] Pen test stopped")
+
     def _handle_job(self, data):
         """Process an incoming photo job."""
-        if self._is_busy:
+        if self._is_busy or self._is_testing:
             self.sio.emit('job_error', {
-                'message': 'Robot is busy with another drawing'
+                'message': 'Robot is busy' + (' (testing)' if self._is_testing else '')
             }, namespace='/robot')
             return
 
@@ -239,6 +437,7 @@ def main():
         arm_id=args.arm_id,
         label=label,
         token=args.token,
+        config_path=args.config,
     )
 
     try:
