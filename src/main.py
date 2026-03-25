@@ -215,6 +215,13 @@ class PortraitSystem:
                 detail_min_length=self.config.contour.detail_min_length,
                 detail_min_area=self.config.contour.detail_min_area,
                 detail_region_padding=self.config.contour.detail_region_padding,
+                fill_enabled=self.config.contour.fill_enabled,
+                fill_min_area=self.config.contour.fill_min_area,
+                fill_max_area=self.config.contour.fill_max_area,
+                fill_min_solidity=self.config.contour.fill_min_solidity,
+                fill_strategy=self.config.contour.fill_strategy,
+                fill_spacing=self.config.contour.fill_spacing,
+                fill_hatch_angle=self.config.contour.fill_hatch_angle,
             )
             self.contour_extractor = AdaptiveContourExtractor(adaptive_config)
 
@@ -542,6 +549,13 @@ class PortraitSystem:
                     detail_min_length=sc.detail_min_length or self.config.contour.detail_min_length,
                     detail_min_area=sc.detail_min_area or self.config.contour.detail_min_area,
                     detail_region_padding=sc.detail_region_padding or self.config.contour.detail_region_padding,
+                    fill_enabled=sc.fill_enabled if sc.fill_enabled is not None else self.config.contour.fill_enabled,
+                    fill_min_area=sc.fill_min_area if sc.fill_min_area is not None else self.config.contour.fill_min_area,
+                    fill_max_area=sc.fill_max_area if sc.fill_max_area is not None else self.config.contour.fill_max_area,
+                    fill_min_solidity=sc.fill_min_solidity if sc.fill_min_solidity is not None else self.config.contour.fill_min_solidity,
+                    fill_strategy=sc.fill_strategy or self.config.contour.fill_strategy,
+                    fill_spacing=sc.fill_spacing if sc.fill_spacing is not None else self.config.contour.fill_spacing,
+                    fill_hatch_angle=sc.fill_hatch_angle if sc.fill_hatch_angle is not None else self.config.contour.fill_hatch_angle,
                 )
                 self.contour_extractor = AdaptiveContourExtractor(adaptive_config)
 

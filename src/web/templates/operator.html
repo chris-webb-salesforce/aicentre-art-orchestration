@@ -1,0 +1,507 @@
+<!DOCTYPE html>
+<html lang="en" class="{{ 'light' if light_mode else '' }}">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Operator Panel</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.5.4/socket.io.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            background: #1a1a2e;
+            color: #eee;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            min-height: 100vh;
+            padding: 24px;
+        }
+
+        .header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 32px;
+        }
+
+        .header h1 {
+            font-size: 1.5rem;
+            font-weight: 300;
+            letter-spacing: 2px;
+        }
+
+        .header-actions {
+            display: flex;
+            gap: 12px;
+            align-items: center;
+        }
+
+        .header a {
+            color: #888;
+            text-decoration: none;
+            font-size: 0.85rem;
+        }
+
+        .header a:hover { color: #ccc; }
+
+        .no-arms {
+            text-align: center;
+            color: #666;
+            padding: 80px 20px;
+            font-size: 1.1rem;
+        }
+
+        .arms-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(380px, 1fr));
+            gap: 20px;
+        }
+
+        .arm-card {
+            background: #16213e;
+            border-radius: 14px;
+            border: 1px solid rgba(255,255,255,0.06);
+            overflow: hidden;
+        }
+
+        .arm-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 16px 20px;
+            border-bottom: 1px solid rgba(255,255,255,0.06);
+        }
+
+        .arm-title {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .arm-title h2 {
+            font-size: 1rem;
+            font-weight: 500;
+        }
+
+        .status-badge {
+            font-size: 0.65rem;
+            text-transform: uppercase;
+            letter-spacing: 1.5px;
+            padding: 3px 10px;
+            border-radius: 10px;
+            font-weight: 600;
+        }
+
+        .status-badge.idle { background: rgba(39,174,96,0.2); color: #27ae60; }
+        .status-badge.processing { background: rgba(243,156,18,0.2); color: #f39c12; }
+        .status-badge.drawing { background: rgba(102,126,234,0.2); color: #667eea; }
+        .status-badge.complete { background: rgba(39,174,96,0.2); color: #27ae60; }
+        .status-badge.error { background: rgba(231,76,60,0.2); color: #e74c3c; }
+        .status-badge.testing { background: rgba(155,109,255,0.2); color: #9b6dff; }
+
+        .arm-body {
+            padding: 20px;
+        }
+
+        .config-row {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            margin-bottom: 14px;
+        }
+
+        .config-row label {
+            font-size: 0.8rem;
+            color: #888;
+            width: 70px;
+            flex-shrink: 0;
+            text-align: right;
+        }
+
+        .config-row input[type="number"] {
+            width: 100px;
+            padding: 8px 10px;
+            border: 1px solid #333;
+            border-radius: 8px;
+            background: #0d0d1a;
+            color: #eee;
+            font-size: 0.9rem;
+            text-align: center;
+            outline: none;
+        }
+
+        .config-row input[type="number"]:focus {
+            border-color: #667eea;
+        }
+
+        .config-row input[type="range"] {
+            flex: 1;
+            accent-color: #667eea;
+        }
+
+        .config-row .value-display {
+            font-size: 0.85rem;
+            color: #667eea;
+            width: 60px;
+            text-align: center;
+            font-variant-numeric: tabular-nums;
+        }
+
+        .arm-actions {
+            display: flex;
+            gap: 10px;
+            margin-top: 20px;
+            flex-wrap: wrap;
+        }
+
+        .btn {
+            font-size: 0.8rem;
+            padding: 10px 18px;
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+            font-weight: 500;
+            letter-spacing: 0.5px;
+        }
+
+        .btn:active:not(:disabled) { transform: scale(0.97); opacity: 0.9; }
+        .btn:disabled { opacity: 0.35; cursor: default; }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: #fff;
+        }
+
+        .btn-secondary {
+            background: #2a2a4a;
+            color: #ccc;
+        }
+
+        .btn-success {
+            background: #27ae60;
+            color: #fff;
+        }
+
+        .btn-warning {
+            background: #f39c12;
+            color: #fff;
+        }
+
+        .btn-danger {
+            background: #e74c3c;
+            color: #fff;
+        }
+
+        /* Pen test mode */
+        .pen-test-panel {
+            display: none;
+            margin-top: 16px;
+            padding: 16px;
+            background: rgba(155,109,255,0.08);
+            border: 1px solid rgba(155,109,255,0.2);
+            border-radius: 10px;
+        }
+
+        .pen-test-panel.active { display: block; }
+
+        .pen-test-panel h3 {
+            font-size: 0.85rem;
+            font-weight: 500;
+            color: #9b6dff;
+            margin-bottom: 16px;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+        }
+
+        .pen-test-actions {
+            display: flex;
+            gap: 10px;
+            margin-top: 16px;
+        }
+
+        .current-z {
+            font-size: 0.85rem;
+            color: #aaa;
+            margin-top: 12px;
+        }
+
+        .current-z span {
+            color: #9b6dff;
+            font-weight: 600;
+            font-variant-numeric: tabular-nums;
+        }
+
+        /* Toast notifications */
+        .toast {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            padding: 12px 20px;
+            border-radius: 10px;
+            font-size: 0.85rem;
+            z-index: 100;
+            opacity: 0;
+            transform: translateY(10px);
+            transition: all 0.3s ease;
+            pointer-events: none;
+        }
+
+        .toast.show {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        .toast.success { background: #27ae60; color: #fff; }
+        .toast.error { background: #e74c3c; color: #fff; }
+        .toast.info { background: #667eea; color: #fff; }
+
+        /* Light mode */
+        html.light body { background: #f5f5f7; color: #1a1a1a; }
+        html.light .arm-card { background: #fff; border-color: rgba(0,0,0,0.08); }
+        html.light .arm-header { border-color: rgba(0,0,0,0.06); }
+        html.light .arm-title h2 { color: #1a1a1a; }
+        html.light .config-row label { color: #666; }
+        html.light .config-row input[type="number"] {
+            background: #f0f0f2; border-color: #ddd; color: #1a1a1a;
+        }
+        html.light .btn-secondary { background: #e8e8ed; color: #333; }
+        html.light .header a { color: #666; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>Operator Panel</h1>
+        <div class="header-actions">
+            <a href="/capture">Capture UI</a>
+            <a href="/logout">Logout</a>
+        </div>
+    </div>
+
+    <div id="noArms" class="no-arms">No arms connected</div>
+    <div id="armsGrid" class="arms-grid"></div>
+
+    <div class="toast" id="toast"></div>
+
+    <script>
+        const socket = io('/capture');
+        const armsGrid = document.getElementById('armsGrid');
+        const noArms = document.getElementById('noArms');
+        const toast = document.getElementById('toast');
+
+        let armsData = {};       // arm_id -> {label, status, config}
+        let testingArm = null;   // arm_id currently in pen test mode
+        let pendingZ = {};       // arm_id -> {z_up, z_down} edited values
+
+        // --- Toast ---
+        function showToast(message, type = 'info') {
+            toast.textContent = message;
+            toast.className = `toast ${type} show`;
+            setTimeout(() => toast.classList.remove('show'), 3000);
+        }
+
+        // --- Socket events ---
+        socket.on('connect', () => {
+            showToast('Connected to server', 'success');
+        });
+
+        socket.on('overview', (data) => {
+            const arms = data.arms || [];
+            armsData = {};
+            arms.forEach(a => {
+                armsData[a.arm_id] = a;
+            });
+            renderArms();
+        });
+
+        socket.on('arm_config', (data) => {
+            if (armsData[data.arm_id]) {
+                armsData[data.arm_id].config = data.config;
+                renderArms();
+            }
+        });
+
+        socket.on('config_saved', (data) => {
+            if (data.success) {
+                showToast(`${data.arm_id} config saved`, 'success');
+            } else {
+                showToast(`Failed to save ${data.arm_id} config`, 'error');
+            }
+        });
+
+        socket.on('test_pen_status', (data) => {
+            const el = document.getElementById(`currentZ-${data.arm_id}`);
+            if (el) {
+                el.innerHTML = `Current Z: <span>${parseFloat(data.z).toFixed(1)}</span> (${data.mode})`;
+            }
+        });
+
+        socket.on('error', (data) => {
+            showToast(data.message, 'error');
+        });
+
+        // --- Rendering ---
+        function renderArms() {
+            const ids = Object.keys(armsData);
+            if (ids.length === 0) {
+                noArms.style.display = 'block';
+                armsGrid.style.display = 'none';
+                return;
+            }
+            noArms.style.display = 'none';
+            armsGrid.style.display = 'grid';
+
+            armsGrid.innerHTML = ids.map(id => renderArmCard(armsData[id])).join('');
+        }
+
+        function renderArmCard(arm) {
+            const cfg = arm.config || {};
+            const drawing = cfg.drawing || {};
+            const zUp = pendingZ[arm.arm_id]?.z_up ?? drawing.z_up ?? -65;
+            const zDown = pendingZ[arm.arm_id]?.z_down ?? drawing.z_down ?? -70;
+            const isTesting = arm.status === 'testing';
+            const isIdle = arm.status === 'idle';
+            const canTest = isIdle && !testingArm;
+            const canApply = isIdle || isTesting;
+
+            return `
+            <div class="arm-card" id="card-${arm.arm_id}">
+                <div class="arm-header">
+                    <div class="arm-title">
+                        <h2>${arm.label || arm.arm_id}</h2>
+                    </div>
+                    <span class="status-badge ${arm.status}">${arm.status}</span>
+                </div>
+                <div class="arm-body">
+                    <div class="config-row">
+                        <label>z_up</label>
+                        <input type="range" min="-80" max="-50" step="0.5"
+                               value="${zUp}"
+                               oninput="onZChange('${arm.arm_id}', 'z_up', this.value)">
+                        <input type="number" min="-80" max="-50" step="0.5"
+                               value="${zUp}" id="zUpNum-${arm.arm_id}"
+                               onchange="onZChange('${arm.arm_id}', 'z_up', this.value)">
+                    </div>
+                    <div class="config-row">
+                        <label>z_down</label>
+                        <input type="range" min="-80" max="-50" step="0.5"
+                               value="${zDown}"
+                               oninput="onZChange('${arm.arm_id}', 'z_down', this.value)">
+                        <input type="number" min="-80" max="-50" step="0.5"
+                               value="${zDown}" id="zDownNum-${arm.arm_id}"
+                               onchange="onZChange('${arm.arm_id}', 'z_down', this.value)">
+                    </div>
+
+                    <div class="pen-test-panel ${isTesting ? 'active' : ''}" id="penTest-${arm.arm_id}">
+                        <h3>Pen Height Test</h3>
+                        <div class="pen-test-actions">
+                            <button class="btn btn-primary" onclick="testPenMove('${arm.arm_id}', 'up')">
+                                Move to z_up
+                            </button>
+                            <button class="btn btn-warning" onclick="testPenMove('${arm.arm_id}', 'down')">
+                                Move to z_down
+                            </button>
+                        </div>
+                        <div class="current-z" id="currentZ-${arm.arm_id}">
+                            Current Z: <span>--</span>
+                        </div>
+                    </div>
+
+                    <div class="arm-actions">
+                        ${!isTesting ? `
+                            <button class="btn btn-primary" onclick="applyConfig('${arm.arm_id}')"
+                                    ${canApply ? '' : 'disabled'}>Apply</button>
+                            <button class="btn btn-success" onclick="saveConfig('${arm.arm_id}')"
+                                    ${canApply ? '' : 'disabled'}>Save</button>
+                            <button class="btn btn-secondary" onclick="startPenTest('${arm.arm_id}')"
+                                    ${canTest ? '' : 'disabled'}>Test Pen Height</button>
+                        ` : `
+                            <button class="btn btn-primary" onclick="applyAndStopTest('${arm.arm_id}')">
+                                Apply & Exit
+                            </button>
+                            <button class="btn btn-secondary" onclick="stopPenTest('${arm.arm_id}')">
+                                Cancel
+                            </button>
+                        `}
+                    </div>
+                </div>
+            </div>`;
+        }
+
+        // --- Z value editing ---
+        function onZChange(armId, field, value) {
+            const v = parseFloat(value);
+            if (isNaN(v)) return;
+            if (!pendingZ[armId]) {
+                const cfg = armsData[armId]?.config?.drawing || {};
+                pendingZ[armId] = {
+                    z_up: cfg.z_up ?? -65,
+                    z_down: cfg.z_down ?? -70,
+                };
+            }
+            pendingZ[armId][field] = v;
+
+            // Sync slider and number input
+            const card = document.getElementById(`card-${armId}`);
+            if (card) {
+                const numId = field === 'z_up' ? `zUpNum-${armId}` : `zDownNum-${armId}`;
+                const numInput = document.getElementById(numId);
+                if (numInput) numInput.value = v;
+                // Also sync the range slider
+                const rows = card.querySelectorAll('.config-row');
+                const rowIdx = field === 'z_up' ? 0 : 1;
+                const slider = rows[rowIdx]?.querySelector('input[type="range"]');
+                if (slider) slider.value = v;
+            }
+
+            // If in test mode, live-send the Z value
+            if (armsData[armId]?.status === 'testing') {
+                socket.emit('test_pen_move', { arm_id: armId, z: v });
+            }
+        }
+
+        // --- Config actions ---
+        function applyConfig(armId) {
+            const z = pendingZ[armId];
+            if (!z) {
+                showToast('No changes to apply', 'info');
+                return;
+            }
+            socket.emit('update_config', {
+                arm_id: armId,
+                config: { drawing: { z_up: z.z_up, z_down: z.z_down } },
+            });
+            showToast(`Config applied to ${armId}`, 'success');
+        }
+
+        function saveConfig(armId) {
+            applyConfig(armId);
+            socket.emit('save_config', { arm_id: armId });
+        }
+
+        // --- Pen test ---
+        function startPenTest(armId) {
+            testingArm = armId;
+            socket.emit('test_pen_start', { arm_id: armId });
+        }
+
+        function testPenMove(armId, direction) {
+            const z = pendingZ[armId] || {};
+            const cfg = armsData[armId]?.config?.drawing || {};
+            const value = direction === 'up'
+                ? (z.z_up ?? cfg.z_up ?? -65)
+                : (z.z_down ?? cfg.z_down ?? -70);
+            socket.emit('test_pen_move', { arm_id: armId, z: value });
+        }
+
+        function applyAndStopTest(armId) {
+            applyConfig(armId);
+            stopPenTest(armId);
+        }
+
+        function stopPenTest(armId) {
+            testingArm = null;
+            delete pendingZ[armId];
+            socket.emit('test_pen_stop', { arm_id: armId });
+        }
+    </script>
+</body>
+</html>

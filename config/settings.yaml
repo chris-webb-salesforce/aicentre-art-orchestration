@@ -1,89 +1,112 @@
-# Robot Portrait Drawing System Configuration
-# ============================================
-
-# MyCobot320 (Processor/Camera Arm)
 mycobot:
-  port: "/dev/ttyAMA0"
+  port: /dev/ttyAMA0
   baud_rate: 115200
-  home_angles: [0, 0, 0, 0, 0, 0]
-  tracking_angles: [0, 20, -30, 0, 30, 0]
+  home_angles:
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  tracking_angles:
+  - 0
+  - 20
+  - -30
+  - 0
+  - 30
+  - 0
   speed: 30
   pan_sensitivity: 0.05
   tilt_sensitivity: 0.05
-
-# Rotrics DexArm (Artist Arm)
 dexarm:
-  port: "/dev/tty.usbmodem3187378532331"
+  port: /dev/tty.usbmodem3187378532331
   baud_rate: 115200
-  feedrate: 6000              # Drawing speed (mm/min) - slower = smoother lines
-  travel_feedrate: 4000       # Pen-up travel speed (mm/min)
-  acceleration: 200           # Drawing acceleration (mm/s²) - lower = smoother
-  travel_acceleration: 200    # Travel acceleration (mm/s²)
-  jerk: 7.0                   # Jerk limit (mm/s) - lower = smoother direction changes
-
-# Drawing Bounds (mm)
+  feedrate: 6000
+  travel_feedrate: 4000
+  acceleration: 200
+  travel_acceleration: 200
+  jerk: 7.0
 drawing:
   x_min: -53.0
   x_max: 54.0
   y_min: 232.0
   y_max: 337.0
   size_mm: 120
-  z_up: -65.0
-  z_down: -70.0
-  flip_x: true            # Mirror horizontally (fixes camera mirror effect)
-  flip_y: false           # Mirror vertically
+  z_up: -71.0
+  z_down: -76.0
+  flip_x: true
+  flip_y: false
   safe_position:
     x: 0.0
     y: 300.0
     z: 30.0
-
-# Logo Settings (drawn above portrait)
+arms:
+- id: arm-1
+  label: Station 1
+  dexarm:
+    port: /dev/tty.usbmodem3187378532331
+  drawing:
+    z_up: -71.0
+    z_down: -76.0
+- id: arm-2
+  label: Station 2
+  dexarm:
+    port: /dev/tty.usbmodem3062338934381
+    feedrate: 6000
+    travel_feedrate: 4000
+    acceleration: 200
+    travel_acceleration: 200
+    jerk: 5.0
+  drawing:
+    z_up: -69.5
+    z_down: -74.5
 logo:
-  enabled: true
-  path: "config/logo.gcode"
+  enabled: false
+  path: config/logo.gcode
   x_min: -30.0
   x_max: 30.0
   y_min: 345.0
   y_max: 385.0
-
-# Camera Settings
 camera:
   index: 0
   width: 640
   height: 480
   capture_width: 1280
   capture_height: 720
-
-# Face Tracking Settings
 face_tracking:
   center_threshold: 0.1
   stable_duration: 1.5
   max_tracking_time: 30.0
   min_face_size: 0.1
-
-# OpenAI API Settings
 openai:
-  model: "gpt-image-1.5"
-  default_style: "minimal"
-  size: "1024x1024"
+  model: gpt-image-1.5
+  default_style: minimal
+  size: 1024x1024
   max_retries: 3
   retry_delay: 5.0
-  reference_image: "config/reference.png"  # Style reference for line art generation
-
-  # Art style prompts - all optimized for line drawing output
+  reference_image: config/reference.png
   styles:
     simple:
-      name: "Simple Line Art"
-      prompt: |
-        Transform this portrait into a simple, minimalist cartoon line drawing.
+      name: Simple Line Art
+      prompt: 'Transform this portrait into a simple, minimalist cartoon line drawing.
+
         Use only simple, clean, flowing black lines on a pure white background.
-        The sketch should be in a playful but realistic style and look like a hand-drawn cartoon that resembles the portrait.
-        No shading, no filling, just clean single line work. Make the lines a single pixel thick and as thin as possible. Every line should be the same thickness.
+
+        The sketch should be in a playful but realistic style and look like a hand-drawn
+        cartoon that resembles the portrait.
+
+        No shading, no filling, just clean single line work. Make the lines a single
+        pixel thick and as thin as possible. Every line should be the same thickness.
+
         Where possible, join lines, i.e. hair and beards.
+
         Accessories like glasses and earings should not be filled in.
+
         *Keep the image simple and with only thin 1px lines*
+
+        '
       contour:
-        method: "hybrid"
+        method: hybrid
         skeleton_simplify: 1.0
         canny_low: 50
         canny_high: 100
@@ -94,192 +117,268 @@ openai:
         merge_enabled: false
         merge_distance: 30.0
         region_aware: true
-
+        fill_strategy: spiral
+        fill_min_area: 500
     minimal:
-      name: "Minimalist Line Art"
-      prompt: |
-        Transform this face portrait into a minimalist single continuous line drawing.
+      name: Minimalist Line Art
+      prompt: 'Transform this face portrait into a minimalist single continuous line
+        drawing.
+
         Focus entirely on the face - capture the eyes, nose, mouth, and facial outline.
+
         Use only simple, clean, flowing black lines on a pure white background.
+
         Minimal details, abstract but recognizable. No shading, no filling.
+
         Make the lines a single pixel thick. The face should fill most of the image.
+
+        '
       contour:
-        method: "hybrid"
-        canny_low: 30
+        method: hybrid
+        skeleton_simplify: 1.0
+        canny_low: 50
         canny_high: 100
-        simplify_epsilon: 3.0
+        simplify_epsilon: 0.0
         min_length: 1.0
         min_area: 500
         min_contour_points: 5
-        merge_enabled: true
-        merge_distance: 50.0
-        region_aware: false
-
+        merge_enabled: false
+        merge_distance: 30.0
+        region_aware: true
     vangogh:
-      name: "Van Gogh Style"
-      prompt: |
-        Transform this face portrait into a Van Gogh-inspired line drawing.
-        Focus on the face with expressive, swirling line work characteristic of Van Gogh.
-        Use bold, confident black lines on white background with flowing, energetic strokes.
+      name: Van Gogh Style
+      prompt: 'Transform this face portrait into a Van Gogh-inspired line drawing.
+
+        Focus on the face with expressive, swirling line work characteristic of Van
+        Gogh.
+
+        Use bold, confident black lines on white background with flowing, energetic
+        strokes.
+
         Make sure there is no background to this image.
+
         Capture the emotion and movement. No shading or color, just expressive lines.
-        Make all lines as thin as possible, ideally 1 pixel thick.
-        Do simplify the lines, the image shouldn't be too dense.
-        The face should fill most of the image.
-      contour:
-        method: "hybrid"
-        simplify_epsilon: 0.6
-        min_length: 8.0
-        merge_enabled: true
-        merge_distance: 8.0
-        region_aware: true
 
+        Make all lines as thin as possible, ideally 1 pixel thick.
+
+        Do simplify the lines, the image shouldn''t be too dense.
+
+        The face should fill most of the image.
+
+        There should be no background to the image.
+        '
+      contour:
+        method: hybrid
+        skeleton_simplify: 1.0
+        canny_low: 50
+        canny_high: 100
+        simplify_epsilon: 0.0
+        min_length: 1.0
+        min_area: 500
+        min_contour_points: 5
+        merge_enabled: false
+        merge_distance: 30.0
+        region_aware: true
     ghibli:
-      name: "Studio Ghibli"
-      prompt: |
-        Transform this face portrait into a Studio Ghibli anime-style line drawing.
-        Focus on the face with soft, gentle lines and large expressive eyes with absolutely no filling colour.
+      name: Studio Ghibli
+      prompt: 'Transform this face portrait into a Studio Ghibli anime-style line
+        drawing.
+
+        Focus on the face with soft, gentle lines and large expressive eyes with absolutely
+        no filling colour.
+
         Clean black lines on white background, capturing warmth and whimsy.
+
         Simple but charming with attention to eyes and expression.
+
         Make all lines as thin as possible, ideally 1 pixel thick. No shading or color.
-        The face should fill most of the image.
-      contour:
-        method: "adaptive"
-        simplify_epsilon: 0.5
-        min_length: 5.0
-        merge_enabled: true
-        merge_distance: 6.0
-        region_aware: true
-        detail_simplify_epsilon: 0.2
-        detail_region_padding: 25
 
+        The face should fill most of the image.
+
+        '
+      contour:
+        method: hybrid
+        skeleton_simplify: 1.0
+        canny_low: 50
+        canny_high: 100
+        simplify_epsilon: 0.0
+        min_length: 1.0
+        min_area: 500
+        min_contour_points: 5
+        merge_enabled: false
+        merge_distance: 30.0
+        region_aware: true
+        fill_strategy: spiral
+        fill_spacing: 2.0
     picasso:
-      name: "Picasso Cubist"
-      prompt: |
-        Transform this face portrait into a Picasso cubist-style line drawing.
+      name: Picasso Cubist
+      prompt: 'Transform this face portrait into a Picasso cubist-style line drawing.
+
         Focus on the face with geometric, angular interpretations of features.
+
         Abstract the face into shapes and planes while keeping it recognizable.
+
         Black lines on white background. No shading or filling.
-        Make all lines as thin as possible, ideally 1 pixel thick.
-        The face should fill most of the image.
-      contour:
-        method: "canny"
-        simplify_epsilon: 1.0
-        min_length: 12.0
-        min_area: 80
-        merge_enabled: true
-        merge_distance: 10.0
 
-    sketch:
-      name: "Quick Sketch"
-      prompt: |
-        Transform this face portrait into a quick artist's sketch.
-        Focus on the face with loose, gestural black lines on white background.
-        Capture the essence with minimal strokes like a 30-second figure drawing.
-        Raw and expressive, not polished. No shading, just confident line work.
         Make all lines as thin as possible, ideally 1 pixel thick.
-        The face should fill most of the image.
-      contour:
-        method: "thinning"
-        simplify_epsilon: 1.3
-        min_length: 15.0
-        merge_enabled: true
-        merge_distance: 12.0
-        region_aware: false
 
-    caricature:
-      name: "Caricature"
-      prompt: |
-        Transform this face portrait into a caricature-style line drawing.
-        Focus on the face, exaggerating distinctive features in a playful way.
-        Black lines on white background.
-        Fun and recognizable with emphasized characteristics.
-        Make all lines as thin as possible, ideally 1 pixel thick. No shading or filling.
         The face should fill most of the image.
+
+        '
       contour:
-        method: "adaptive"
-        simplify_epsilon: 0.8
-        min_length: 10.0
-        merge_enabled: true
-        merge_distance: 8.0
+        method: hybrid
+        skeleton_simplify: 1.0
+        canny_low: 50
+        canny_high: 100
+        simplify_epsilon: 0.0
+        min_length: 1.0
+        min_area: 500
+        min_contour_points: 5
+        merge_enabled: false
+        merge_distance: 30.0
         region_aware: true
+    sketch:
+      name: Quick Sketch
+      prompt: 'Transform this face portrait into a quick artist''s sketch.
 
-    geometric:
-      name: "Geometric"
-      prompt: |
-        Transform this face portrait into a geometric line drawing.
-        Focus on the face using only straight lines and angular shapes.
-        Low-poly style with black lines on white background.
-        Abstract but recognizable facial structure. No curves, no shading.
+        Focus on the face with loose, gestural black lines on white background.
+
+        Capture the essence with minimal strokes like a 30-second figure drawing.
+
+        Raw and expressive, not polished. No shading, just confident line work.
+
         Make all lines as thin as possible, ideally 1 pixel thick.
-        The face should fill most of the image.
-      contour:
-        method: "thinning"
-        simplify_epsilon: 2.0
-        min_length: 15.0
-        min_area: 100
-        merge_enabled: true
-        merge_distance: 10.0
 
+        The face should fill most of the image.
+
+        '
+      contour:
+        method: hybrid
+        skeleton_simplify: 1.0
+        canny_low: 50
+        canny_high: 100
+        simplify_epsilon: 0.0
+        min_length: 1.0
+        min_area: 500
+        min_contour_points: 5
+        merge_enabled: false
+        merge_distance: 30.0
+        region_aware: true
+    caricature:
+      name: Caricature
+      prompt: 'Transform this face portrait into a caricature-style line drawing.
+
+        Focus on the face, exaggerating distinctive features in a playful way.
+
+        Black lines on white background.
+
+        Fun and recognizable with emphasized characteristics.
+
+        Make all lines as thin as possible, ideally 1 pixel thick. No shading or filling.
+
+        The face should fill most of the image.
+
+        '
+      contour:
+        method: hybrid
+        skeleton_simplify: 1.0
+        canny_low: 50
+        canny_high: 100
+        simplify_epsilon: 0.0
+        min_length: 1.0
+        min_area: 500
+        min_contour_points: 5
+        merge_enabled: false
+        merge_distance: 30.0
+        region_aware: true
+    geometric:
+      name: Geometric
+      prompt: 'Transform this face portrait into a geometric line drawing.
+
+        Focus on the face using only straight lines and angular shapes.
+
+        Low-poly style with black lines on white background.
+
+        Abstract but recognizable facial structure. No curves, no shading.
+
+        Make all lines as thin as possible, ideally 1 pixel thick.
+
+        The face should fill most of the image.
+
+        '
+      contour:
+        method: hybrid
+        skeleton_simplify: 1.0
+        canny_low: 50
+        canny_high: 100
+        simplify_epsilon: 0.0
+        min_length: 1.0
+        min_area: 500
+        min_contour_points: 5
+        merge_enabled: false
+        merge_distance: 30.0
+        region_aware: true
+        fill_strategy: hatch
+        fill_hatch_angle: 45.0
     contour:
-      name: "Blind Contour"
-      prompt: |
-        Transform this face portrait into a blind contour-style line drawing.
+      name: Blind Contour
+      prompt: 'Transform this face portrait into a blind contour-style line drawing.
+
         Focus on the face with one continuous wandering line that traces features.
+
         Imperfect, wobbly black line on white background like drawing without looking.
+
         Charming and authentic with natural imperfections.
+
         Make the line as thin as possible, ideally 1 pixel thick.
+
         The face should fill most of the image.
+
+        '
       contour:
-        method: "thinning"
-        simplify_epsilon: 0.8
-        min_length: 5.0
-        merge_enabled: true
-        merge_distance: 20.0
-
-# Contour Extraction Settings
+        method: hybrid
+        skeleton_simplify: 1.0
+        canny_low: 50
+        canny_high: 100
+        simplify_epsilon: 0.0
+        min_length: 1.0
+        min_area: 500
+        min_contour_points: 5
+        merge_enabled: false
+        merge_distance: 30.0
+        region_aware: true
 contour_extraction:
-  # Method: "canny", "skeleton", "adaptive", "hybrid", or "thinning"
-  method: "canny"
-
-  # Canny parameters (for thin lines)
-  canny_low: 15               # Lower = detect fainter edges (try 20-50)
-  canny_high: 60             # Lower = more edges detected (try 80-150)
-
-  # General parameters
-  min_area: 20                # Lower = keep smaller contours like hair (try 30-100)
-  simplify_epsilon: 3.0       # Path simplification - lower = more points = smoother curves
-  blur_kernel: 3              # Gaussian blur size - smaller preserves detail (3 or 5)
-  min_contour_points: 3       # Minimum points to keep a contour (lower = more small lines)
-
-  # Adaptive method parameters (used when method is "adaptive" or "hybrid")
-  thickness_threshold: 5      # Pixels - lines thicker than this use skeleton
-  density_threshold: 0.5      # Local density above this triggers skeleton method
-  skeleton_simplify: 0.5      # Simplification for skeleton contours
-
-  # Thinning parameters (Zhang-Suen, for "thinning" method and improved "skeleton")
-  thinning_threshold: 127     # Binary threshold for thinning (0-255)
-  thinning_cleanup: true      # Post-thinning morphological cleanup to reconnect gaps
-  thinning_cleanup_kernel: 2  # Cleanup kernel size
-
-  # Speed optimizations (reduce drawing time)
-  min_length: 5.0            # Filter contours shorter than this (pixels) - higher = faster
-  merge_distance: 5.0         # Connect contours with endpoints within this distance (pixels)
-  merge_enabled: false         # Enable contour merging to reduce pen lifts
-
-  # Region-aware processing (preserves detail in eyes/facial features)
-  region_aware: false          # Enable face/eye detection for detail preservation
-  detail_simplify_epsilon: 0.3  # Lower epsilon for detail regions (more points = smoother)
-  detail_min_length: 3.0      # Keep smaller contours in detail regions
-  detail_min_area: 10         # Keep smaller areas in detail regions
-  detail_region_padding: 20   # Pixels to expand around detected features
-
-# Path Optimization
+  method: canny
+  canny_low: 15
+  canny_high: 60
+  min_area: 20
+  simplify_epsilon: 3.0
+  blur_kernel: 3
+  min_contour_points: 3
+  thickness_threshold: 5
+  density_threshold: 0.5
+  skeleton_simplify: 0.5
+  thinning_threshold: 127
+  thinning_cleanup: true
+  thinning_cleanup_kernel: 2
+  min_length: 5.0
+  merge_distance: 5.0
+  merge_enabled: false
+  region_aware: false
+  detail_simplify_epsilon: 0.3
+  detail_min_length: 3.0
+  detail_min_area: 10
+  detail_region_padding: 20
+  fill_enabled: true
+  fill_min_area: 800
+  fill_max_area: 8000
+  fill_min_solidity: 0.75
+  fill_strategy: spiral
+  fill_spacing: 3.0
+  fill_hatch_angle: 45.0
 path_optimization:
   enabled: true
   min_travel_distance: 5.0
-
-# Personality Animations
 personality:
   practice_strokes:
     enabled: true
@@ -291,8 +390,6 @@ personality:
     angle_range: 5.0
     interval_min: 3.0
     interval_max: 6.0
-
-# System Settings
 system:
-  output_dir: "output"
-  log_level: "INFO"
+  output_dir: output
+  log_level: INFO

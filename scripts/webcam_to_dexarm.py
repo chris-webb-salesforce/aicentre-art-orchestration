@@ -304,7 +304,15 @@ def extract_and_generate_gcode(line_art, config, args, style=None):
         detail_simplify_epsilon=get_contour_setting('detail_simplify_epsilon', 0.3),
         detail_min_length=get_contour_setting('detail_min_length', 3.0),
         detail_min_area=get_contour_setting('detail_min_area', 10),
-        detail_region_padding=get_contour_setting('detail_region_padding', 20)
+        detail_region_padding=get_contour_setting('detail_region_padding', 20),
+        # Filled region handling (eyes, pupils, solid blobs)
+        fill_enabled=get_contour_setting('fill_enabled', True),
+        fill_min_area=get_contour_setting('fill_min_area', 150),
+        fill_max_area=get_contour_setting('fill_max_area', 8000),
+        fill_min_solidity=get_contour_setting('fill_min_solidity', 0.75),
+        fill_strategy=get_contour_setting('fill_strategy', 'spiral'),
+        fill_spacing=get_contour_setting('fill_spacing', 3.0),
+        fill_hatch_angle=get_contour_setting('fill_hatch_angle', 45.0),
     )
     extractor = AdaptiveContourExtractor(adaptive_config)
 
@@ -569,6 +577,7 @@ def main():
     parser.add_argument('--camera', type=int, help='Camera index (default: from config)')
     parser.add_argument('--port', help='DexArm serial port')
     parser.add_argument('--image', help='Path to existing line art PNG (skips capture and AI processing)')
+    parser.add_argument('--photo', help='Path to photo to send through AI processing (skips webcam capture)')
     parser.add_argument('--no-logo', action='store_true', help='Skip drawing the logo')
     parser.add_argument('--mock', action='store_true', help='Use local edge detection instead of OpenAI')
     parser.add_argument('--preview-only', action='store_true', help='Generate GCode but do not draw')
@@ -593,8 +602,36 @@ def main():
         music_process = play_music(args.music)
 
     try:
+        # If --photo provided, skip webcam but run AI processing
+        if args.photo:
+            print(f"\nLoading photo from: {args.photo}")
+            image = cv2.imread(args.photo)
+            if image is None:
+                print(f"ERROR: Could not load image: {args.photo}")
+                return 1
+            print(f"Loaded photo: {image.shape[1]}x{image.shape[0]}")
+
+            style_name = args.style or config.openai.default_style
+            if hasattr(config.openai, 'styles') and style_name in config.openai.styles:
+                style = config.openai.styles[style_name]
+                print(f"Art style: {style.name}")
+            else:
+                style = None
+                style_name = "custom"
+
+            line_art = process_image(image, config, args, style)
+            if line_art is None:
+                return 1
+
+            arm = None
+            if not args.preview_only and not args.no_logo:
+                if not args.yes:
+                    print("\nWARNING: This will start drawing (pen will touch paper!)")
+                    input("Press ENTER to start or Ctrl+C to cancel...")
+                arm = draw_logo_on_dexarm(config, args)
+
         # If --image provided, skip capture and AI processing
-        if args.image:
+        elif args.image:
             print(f"\nLoading line art from: {args.image}")
             line_art = cv2.imread(args.image)
             if line_art is None:
