@@ -304,7 +304,15 @@ def extract_and_generate_gcode(line_art, config, args, style=None):
         detail_simplify_epsilon=get_contour_setting('detail_simplify_epsilon', 0.3),
         detail_min_length=get_contour_setting('detail_min_length', 3.0),
         detail_min_area=get_contour_setting('detail_min_area', 10),
-        detail_region_padding=get_contour_setting('detail_region_padding', 20)
+        detail_region_padding=get_contour_setting('detail_region_padding', 20),
+        # Filled region handling (eyes, pupils, solid blobs)
+        fill_enabled=get_contour_setting('fill_enabled', True),
+        fill_min_area=get_contour_setting('fill_min_area', 150),
+        fill_max_area=get_contour_setting('fill_max_area', 8000),
+        fill_min_solidity=get_contour_setting('fill_min_solidity', 0.75),
+        fill_strategy=get_contour_setting('fill_strategy', 'spiral'),
+        fill_spacing=get_contour_setting('fill_spacing', 3.0),
+        fill_hatch_angle=get_contour_setting('fill_hatch_angle', 45.0),
     )
     extractor = AdaptiveContourExtractor(adaptive_config)
 

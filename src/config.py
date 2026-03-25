@@ -96,6 +96,13 @@ class StyleContourConfig:
     detail_min_length: float = None
     detail_min_area: int = None
     detail_region_padding: int = None
+    fill_enabled: bool = None
+    fill_min_area: int = None
+    fill_max_area: int = None
+    fill_min_solidity: float = None
+    fill_strategy: str = None
+    fill_spacing: float = None
+    fill_hatch_angle: float = None
 
 
 @dataclass
@@ -146,6 +153,14 @@ class ContourConfig:
     detail_min_length: float = 3.0    # Keep smaller contours in detail regions
     detail_min_area: int = 10         # Keep smaller areas in detail regions
     detail_region_padding: int = 20   # Pixels to expand around detected features
+    # Filled region handling (eyes, pupils, solid blobs)
+    fill_enabled: bool = True         # Detect and pre-process solid filled blobs
+    fill_min_area: int = 800          # px² - only large solid blobs that break thinning
+    fill_max_area: int = 8000         # px² - ignore blobs larger (not a fill)
+    fill_min_solidity: float = 0.75   # area / bounding_rect_area threshold
+    fill_strategy: str = "spiral"     # "spiral", "outline", or "hatch"
+    fill_spacing: float = 3.0         # px between spiral rings or hatch lines
+    fill_hatch_angle: float = 45.0    # degrees for hatch lines
 
 
 @dataclass
@@ -291,6 +306,13 @@ def load_config(config_path: Optional[str] = None) -> Config:
                         detail_min_length=contour_data.get('detail_min_length'),
                         detail_min_area=contour_data.get('detail_min_area'),
                         detail_region_padding=contour_data.get('detail_region_padding'),
+                        fill_enabled=contour_data.get('fill_enabled'),
+                        fill_min_area=contour_data.get('fill_min_area'),
+                        fill_max_area=contour_data.get('fill_max_area'),
+                        fill_min_solidity=contour_data.get('fill_min_solidity'),
+                        fill_strategy=contour_data.get('fill_strategy'),
+                        fill_spacing=contour_data.get('fill_spacing'),
+                        fill_hatch_angle=contour_data.get('fill_hatch_angle'),
                     )
 
                 styles[style_name] = StyleConfig(

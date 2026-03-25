@@ -117,6 +117,8 @@ openai:
         merge_enabled: false
         merge_distance: 30.0
         region_aware: true
+        fill_strategy: spiral
+        fill_min_area: 500
     minimal:
       name: Minimalist Line Art
       prompt: 'Transform this face portrait into a minimalist single continuous line
@@ -206,6 +208,8 @@ openai:
         merge_enabled: false
         merge_distance: 30.0
         region_aware: true
+        fill_strategy: spiral
+        fill_spacing: 2.0
     picasso:
       name: Picasso Cubist
       prompt: 'Transform this face portrait into a Picasso cubist-style line drawing.
@@ -314,6 +318,8 @@ openai:
         merge_enabled: false
         merge_distance: 30.0
         region_aware: true
+        fill_strategy: hatch
+        fill_hatch_angle: 45.0
     contour:
       name: Blind Contour
       prompt: 'Transform this face portrait into a blind contour-style line drawing.
@@ -363,6 +369,13 @@ contour_extraction:
   detail_min_length: 3.0
   detail_min_area: 10
   detail_region_padding: 20
+  fill_enabled: true
+  fill_min_area: 800
+  fill_max_area: 8000
+  fill_min_solidity: 0.75
+  fill_strategy: spiral
+  fill_spacing: 3.0
+  fill_hatch_angle: 45.0
 path_optimization:
   enabled: true
   min_travel_distance: 5.0

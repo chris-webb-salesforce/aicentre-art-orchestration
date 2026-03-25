@@ -12,6 +12,7 @@ from typing import List, Tuple
 import logging
 
 from .contour_extractor import Contour
+from .fill_strategies import detect_filled_regions, erase_regions_from_image, filled_region_to_contours
 
 logger = logging.getLogger(__name__)
 
@@ -60,6 +61,15 @@ class AdaptiveExtractorConfig:
     detail_min_area: int = 10          # Keep smaller areas in detail regions
     detail_region_padding: int = 20    # Pixels to expand around detected features
 
+    # Filled region handling (eyes, pupils, solid blobs)
+    fill_enabled: bool = True          # Detect and pre-process solid filled blobs
+    fill_min_area: int = 800           # px² - ignore blobs smaller than this
+    fill_max_area: int = 8000          # px² - ignore blobs larger than this
+    fill_min_solidity: float = 0.75    # area / bounding_rect_area threshold
+    fill_strategy: str = "spiral"      # "spiral", "outline", or "hatch"
+    fill_spacing: float = 3.0          # px between spiral rings or hatch lines
+    fill_hatch_angle: float = 45.0     # degrees for hatch lines
+
 
 class AdaptiveContourExtractor:
     """
@@ -86,24 +96,33 @@ class AdaptiveContourExtractor:
         Returns:
             List of Contour objects optimized for drawing
         """
+        # Pre-process filled regions (pupils, solid blobs) before thinning
+        fill_contours = []
+        working_image = image
+        if self.config.fill_enabled:
+            fill_contours, working_image = self._handle_filled_regions(image)
+
         method = self.config.method.lower()
 
         # Use region-aware processing if enabled
         if self.config.region_aware:
-            contours = self._extract_region_aware(image, method)
+            contours = self._extract_region_aware(working_image, method)
         elif method == "adaptive":
-            contours = self._extract_adaptive(image)
+            contours = self._extract_adaptive(working_image)
         elif method == "skeleton":
-            contours = self._extract_skeleton(image)
+            contours = self._extract_skeleton(working_image)
         elif method == "canny":
-            contours = self._extract_canny(image)
+            contours = self._extract_canny(working_image)
         elif method == "hybrid":
-            contours = self._extract_hybrid(image)
+            contours = self._extract_hybrid(working_image)
         elif method == "thinning":
-            contours = self._extract_thinning(image)
+            contours = self._extract_thinning(working_image)
         else:
             logger.warning(f"Unknown method '{method}', using adaptive")
-            contours = self._extract_adaptive(image)
+            contours = self._extract_adaptive(working_image)
+
+        # Combine fill contours with extracted contours
+        contours = fill_contours + contours
 
         # Merge nearby contours to reduce pen lifts
         if self.config.merge_enabled:
@@ -114,6 +133,49 @@ class AdaptiveContourExtractor:
             print(f"  Merge disabled")
 
         return contours
+
+    def _handle_filled_regions(
+        self, image: np.ndarray
+    ) -> Tuple[List[Contour], np.ndarray]:
+        """
+        Detect solid filled blobs, generate fill paths, erase blobs from image.
+
+        Returns:
+            (fill_contours, cleaned_image) where fill_contours are drawable paths
+            for the filled regions, and cleaned_image has those blobs painted white
+            so thinning/canny won't produce chaotic mesh paths from them.
+        """
+        _, binary = self._preprocess(image)
+
+        regions = detect_filled_regions(
+            binary,
+            min_area=self.config.fill_min_area,
+            max_area=self.config.fill_max_area,
+            min_solidity=self.config.fill_min_solidity,
+        )
+
+        if not regions:
+            return [], image
+
+        # Generate fill contours for each detected region
+        fill_contours = []
+        for cv_contour, mask in regions:
+            contours = filled_region_to_contours(
+                cv_contour=cv_contour,
+                mask=mask,
+                binary=binary,
+                strategy=self.config.fill_strategy,
+                spacing=self.config.fill_spacing,
+                hatch_angle=self.config.fill_hatch_angle,
+            )
+            fill_contours.extend(contours)
+
+        logger.info(f"Fill processing: {len(regions)} regions -> {len(fill_contours)} contours")
+
+        # Erase filled regions from image so thinning doesn't see them
+        cleaned_image = erase_regions_from_image(image, regions)
+
+        return fill_contours, cleaned_image
 
     def _preprocess(self, image: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
         """Convert to grayscale and binary."""
