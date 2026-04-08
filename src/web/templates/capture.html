@@ -11,7 +11,7 @@
         html, body {
             height: 100%;
             overflow: hidden;
-            background: #1a1a2e;
+            background: #000;
             color: #eee;
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
             -webkit-user-select: none;
@@ -19,25 +19,11 @@
             -webkit-touch-callout: none;
         }
 
-        /* ---- Screens ---- */
-        .screen {
-            position: absolute;
+        /* ---- Full-screen camera ---- */
+        .camera-layer {
+            position: fixed;
             inset: 0;
-            display: none;
-            flex-direction: column;
-        }
-        .screen.active {
-            display: flex;
-            height: 100%;
-        }
-
-        /* ---- Camera Screen ---- */
-        #camera-screen { background: #000; }
-
-        .camera-area {
-            flex: 1;
-            position: relative;
-            overflow: hidden;
+            z-index: 0;
         }
 
         #camera-video {
@@ -45,21 +31,6 @@
             height: 100%;
             object-fit: cover;
             transform: scaleX(-1);
-        }
-
-        .silhouette-guide {
-            position: absolute;
-            inset: 0;
-            pointer-events: none;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
-
-        .silhouette-guide svg {
-            width: 85%;
-            max-height: 80%;
-            opacity: 0.35;
         }
 
         .camera-error {
@@ -81,47 +52,12 @@
             line-height: 1.6;
         }
 
-        .camera-controls {
-            position: absolute;
-            bottom: 0;
-            width: 100%;
-            padding: 20px;
-            padding-bottom: max(20px, env(safe-area-inset-bottom));
-            background: rgba(0,0,0,0.7);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 24px;
-            z-index: 10;
-        }
-
-        .capture-btn {
-            width: 72px;
-            height: 72px;
-            border-radius: 50%;
-            border: 4px solid #fff;
-            background: transparent;
-            cursor: pointer;
-            position: relative;
-            -webkit-appearance: none;
-        }
-
-        .capture-btn::after {
-            content: '';
-            position: absolute;
-            inset: 4px;
-            border-radius: 50%;
-            background: #fff;
-            transition: transform 0.1s;
-        }
-
-        .capture-btn:active::after { transform: scale(0.9); }
-
+        /* ---- Captured preview overlay ---- */
         #captured-preview {
-            position: absolute;
+            position: fixed;
             inset: 0;
             display: none;
-            z-index: 5;
+            z-index: 1;
         }
 
         #captured-preview.show { display: block; }
@@ -132,263 +68,33 @@
             object-fit: cover;
         }
 
-        .review-controls {
-            position: absolute;
-            bottom: 0;
-            width: 100%;
-            padding: 16px 20px;
-            padding-bottom: max(16px, env(safe-area-inset-bottom));
-            background: rgba(0,0,0,0.7);
-            display: none;
-            gap: 12px;
+        /* ---- Countdown ---- */
+        .countdown-overlay {
+            position: fixed;
+            inset: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
             z-index: 10;
+            pointer-events: none;
         }
 
-        .review-controls.show { display: flex; }
-
-        .btn {
-            flex: 1;
-            font-size: 16px;
-            padding: 14px;
-            border: none;
-            border-radius: 12px;
-            cursor: pointer;
-            font-weight: 500;
-            letter-spacing: 0.5px;
-            -webkit-appearance: none;
-        }
-
-        .btn-secondary { background: #2a2a4a; color: #ccc; }
-
-        .btn-primary {
-            background: linear-gradient(135deg, #667eea, #764ba2);
-            color: #fff;
-        }
-
-        .btn:disabled { opacity: 0.4; }
-
-        .btn:active:not(:disabled) {
-            transform: scale(0.98);
-            opacity: 0.9;
-        }
-
-        /* ---- Status Screen ---- */
-        #status-screen {
-            background: #0d0d1a;
-            align-items: center;
-            justify-content: center;
-            text-align: center;
-            padding: 40px 30px;
-            position: relative;
-            overflow: hidden;
-        }
-
-        .status-backdrop {
-            position: absolute;
-            inset: -40px;
-            background-size: cover;
-            background-position: center;
-            filter: blur(40px) brightness(0.25) saturate(1.3);
-            opacity: 0;
-            transition: opacity 1.5s ease;
-        }
-
-        .status-backdrop.visible { opacity: 1; }
-
-        .status-overlay {
-            position: absolute;
-            inset: 0;
-            background: radial-gradient(ellipse at center,
-                rgba(13,13,26,0.5) 0%,
-                rgba(13,13,26,0.85) 70%,
-                rgba(13,13,26,0.95) 100%);
-        }
-
-        .status-content {
-            position: relative;
-            z-index: 2;
-            width: 100%;
-            max-width: 380px;
-        }
-
-        /* Phase steps */
-        .phase-steps {
-            display: flex;
-            align-items: flex-start;
-            justify-content: center;
-            margin-bottom: 52px;
-        }
-
-        .phase-step {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            gap: 10px;
-            opacity: 0.25;
-            transition: opacity 0.6s ease;
-        }
-
-        .phase-step.active,
-        .phase-step.done { opacity: 1; }
-
-        .phase-dot {
-            width: 10px;
-            height: 10px;
-            border-radius: 50%;
-            border: 2px solid #555;
-            background: transparent;
-            transition: all 0.5s ease;
-        }
-
-        .phase-step.active .phase-dot {
-            border-color: #667eea;
-            background: #667eea;
-            box-shadow: 0 0 16px rgba(102,126,234,0.4);
-        }
-
-        .phase-step.done .phase-dot {
-            border-color: #667eea;
-            background: #667eea;
-        }
-
-        .phase-step span {
-            font-size: 0.65rem;
-            text-transform: uppercase;
-            letter-spacing: 2px;
-            color: #666;
-            transition: color 0.5s ease;
-        }
-
-        .phase-step.active span,
-        .phase-step.done span { color: #aaa; }
-
-        .phase-connector {
-            width: 56px;
-            height: 2px;
-            background: #222;
-            margin: 4px 12px 0;
-            position: relative;
-            overflow: hidden;
-            border-radius: 1px;
-        }
-
-        .phase-connector::after {
-            content: '';
-            position: absolute;
-            inset: 0;
-            background: linear-gradient(90deg, #667eea, #764ba2);
-            transform: scaleX(0);
-            transform-origin: left;
-            transition: transform 0.6s ease;
-        }
-
-        .phase-connector.filled::after { transform: scaleX(1); }
-
-        /* Circular progress */
-        .circular-progress {
-            width: 180px;
-            height: 180px;
-            margin: 0 auto 40px;
-            position: relative;
-        }
-
-        .circular-progress > svg {
-            width: 100%;
-            height: 100%;
-            transform: rotate(-90deg);
-        }
-
-        .progress-bg {
-            fill: none;
-            stroke: rgba(255,255,255,0.04);
-            stroke-width: 3;
-        }
-
-        .progress-ring {
-            fill: none;
-            stroke: url(#progressGradient);
-            stroke-width: 3;
-            stroke-linecap: round;
-            stroke-dasharray: 326.73;
-            stroke-dashoffset: 326.73;
-            transition: stroke-dashoffset 0.8s ease;
-        }
-
-        .progress-center {
-            position: absolute;
-            inset: 0;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-        }
-
-        .progress-number {
-            font-size: 2.4rem;
+        .countdown-number {
+            font-size: 8rem;
             font-weight: 200;
             color: #fff;
-            font-variant-numeric: tabular-nums;
-            line-height: 1;
-            letter-spacing: -1px;
+            text-shadow: 0 0 40px rgba(0,0,0,0.6);
+            animation: countdownPop 0.8s ease-out forwards;
         }
 
-        .progress-unit {
-            font-size: 0.7rem;
-            color: #667eea;
-            text-transform: uppercase;
-            letter-spacing: 3px;
-            margin-top: 6px;
+        @keyframes countdownPop {
+            0% { transform: scale(1.6); opacity: 0; }
+            20% { transform: scale(1); opacity: 1; }
+            80% { opacity: 1; }
+            100% { transform: scale(0.8); opacity: 0; }
         }
 
-        /* Complete state */
-        .complete-icon {
-            display: none;
-        }
-
-        .complete-icon.show {
-            display: block;
-            animation: completePop 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-        }
-
-        .complete-icon svg {
-            display: block;
-            width: 56px;
-            height: 56px;
-        }
-
-        .complete-check-path {
-            stroke-dasharray: 40;
-            stroke-dashoffset: 40;
-        }
-
-        .complete-icon.show .complete-check-path {
-            animation: drawCheck 0.4s 0.3s ease forwards;
-        }
-
-        @keyframes completePop {
-            0% { transform: scale(0); opacity: 0; }
-            100% { transform: scale(1); opacity: 1; }
-        }
-
-        @keyframes drawCheck {
-            to { stroke-dashoffset: 0; }
-        }
-
-        .status-message {
-            font-size: 1.1rem;
-            font-weight: 300;
-            color: rgba(255,255,255,0.8);
-            letter-spacing: 0.5px;
-            min-height: 28px;
-            transition: opacity 0.3s ease;
-            margin-bottom: 0;
-        }
-
-        .status-action {
-            margin-top: 28px;
-        }
-
-        /* Connection indicator */
+        /* ---- Connection bar ---- */
         .connection-bar {
             position: fixed;
             top: 0;
@@ -413,33 +119,245 @@
             color: #fff;
         }
 
-        /* Countdown overlay */
-        .countdown-overlay {
-            position: absolute;
-            inset: 0;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            z-index: 8;
+        /* ---- Logo ---- */
+        .logo {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            z-index: 50;
             pointer-events: none;
         }
 
-        .countdown-number {
-            font-size: 8rem;
-            font-weight: 200;
+        .logo img {
+            height: 40px;
+            width: auto;
+            opacity: 0.9;
+        }
+
+        /* ---- Bottom controls ---- */
+        .controls-bar {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            padding: 16px 20px;
+            padding-bottom: max(16px, env(safe-area-inset-bottom));
+            background: rgba(0,0,0,0.7);
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 16px;
+            z-index: 20;
+        }
+
+        .capture-btn {
+            width: 68px;
+            height: 68px;
+            border-radius: 50%;
+            border: 4px solid #fff;
+            background: transparent;
+            cursor: pointer;
+            position: relative;
+            -webkit-appearance: none;
+            flex-shrink: 0;
+        }
+
+        .capture-btn::after {
+            content: '';
+            position: absolute;
+            inset: 4px;
+            border-radius: 50%;
+            background: #fff;
+            transition: transform 0.1s;
+        }
+
+        .capture-btn:active::after { transform: scale(0.9); }
+        .capture-btn:disabled { opacity: 0.3; pointer-events: none; }
+
+        .btn {
+            font-size: 15px;
+            padding: 12px 24px;
+            border: none;
+            border-radius: 12px;
+            cursor: pointer;
+            font-weight: 500;
+            letter-spacing: 0.5px;
+            -webkit-appearance: none;
+        }
+
+        .btn-secondary { background: rgba(255,255,255,0.15); color: #ccc; }
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea, #764ba2);
             color: #fff;
-            text-shadow: 0 0 40px rgba(0,0,0,0.6);
-            animation: countdownPop 0.8s ease-out forwards;
         }
 
-        @keyframes countdownPop {
-            0% { transform: scale(1.6); opacity: 0; }
-            20% { transform: scale(1); opacity: 1; }
-            80% { opacity: 1; }
-            100% { transform: scale(0.8); opacity: 0; }
+        .btn:disabled { opacity: 0.4; pointer-events: none; }
+
+        .btn:active:not(:disabled) {
+            transform: scale(0.98);
+            opacity: 0.9;
         }
 
-        /* ---- Instructions Card ---- */
+        .review-controls { display: none; }
+        .review-controls.show { display: contents; }
+
+        /* ---- Arm status cards (overlay) ---- */
+        .arm-cards {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 50;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            max-height: calc(100% - 120px);
+            overflow-y: auto;
+            pointer-events: none;
+        }
+
+        .arm-card {
+            background: rgba(15, 15, 30, 0.85);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 14px;
+            padding: 14px 16px;
+            min-width: 200px;
+            pointer-events: auto;
+            transition: border-color 0.3s ease;
+        }
+
+        .arm-card-header {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 8px;
+        }
+
+        .arm-card-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            flex-shrink: 0;
+        }
+
+        .arm-card-name {
+            font-size: 0.8rem;
+            font-weight: 600;
+            color: #ddd;
+            flex: 1;
+        }
+
+        .arm-card-status {
+            font-size: 0.65rem;
+            text-transform: uppercase;
+            letter-spacing: 1.5px;
+            color: #888;
+        }
+
+        /* Status colors */
+        .arm-card[data-status="idle"] .arm-card-dot { background: #27ae60; }
+        .arm-card[data-status="idle"] { border-color: rgba(39,174,96,0.25); }
+
+        .arm-card[data-status="processing"] .arm-card-dot { background: #f39c12; }
+        .arm-card[data-status="processing"] { border-color: rgba(243,156,18,0.25); }
+
+        .arm-card[data-status="drawing"] .arm-card-dot { background: #667eea; }
+        .arm-card[data-status="drawing"] { border-color: rgba(102,126,234,0.3); }
+
+        .arm-card[data-status="complete"] .arm-card-dot { background: #27ae60; }
+        .arm-card[data-status="complete"] { border-color: rgba(39,174,96,0.3); }
+
+        .arm-card[data-status="error"] .arm-card-dot { background: #e74c3c; }
+        .arm-card[data-status="error"] { border-color: rgba(231,76,60,0.3); }
+
+        .arm-card[data-status="testing"] .arm-card-dot { background: #9b59b6; }
+        .arm-card[data-status="testing"] { border-color: rgba(155,89,182,0.3); }
+
+        /* Progress bar inside card */
+        .arm-card-progress {
+            display: none;
+            height: 3px;
+            background: rgba(255,255,255,0.08);
+            border-radius: 2px;
+            margin: 8px 0 4px;
+            overflow: hidden;
+        }
+
+        .arm-card-progress.show { display: block; }
+
+        .arm-card-progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #667eea, #9b6dff);
+            border-radius: 2px;
+            width: 0%;
+            transition: width 0.5s ease;
+        }
+
+        .arm-card-message {
+            font-size: 0.7rem;
+            color: #777;
+            margin-top: 4px;
+            min-height: 1em;
+        }
+
+        /* Action button inside card */
+        .arm-card-action {
+            margin-top: 10px;
+        }
+
+        .arm-card-btn {
+            width: 100%;
+            font-size: 0.72rem;
+            padding: 8px 12px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
+            -webkit-appearance: none;
+        }
+
+        .arm-card-btn:active { transform: scale(0.97); }
+
+        .arm-card-btn.confirm-btn {
+            background: #27ae60;
+            color: #fff;
+        }
+
+        .arm-card-btn.reset-btn {
+            background: rgba(231,76,60,0.2);
+            color: #e74c3c;
+            border: 1px solid rgba(231,76,60,0.3);
+        }
+
+        .arm-card-btn.force-btn {
+            background: rgba(255,255,255,0.1);
+            color: #aaa;
+            border: 1px solid rgba(255,255,255,0.1);
+            font-size: 0.65rem;
+            margin-top: 6px;
+        }
+
+        /* Queue indicator */
+        .queue-indicator {
+            display: none;
+            background: rgba(243,156,18,0.15);
+            border: 1px solid rgba(243,156,18,0.3);
+            border-radius: 10px;
+            padding: 10px 14px;
+            font-size: 0.8rem;
+            color: #f39c12;
+            text-align: center;
+            pointer-events: auto;
+        }
+
+        .queue-indicator.show { display: block; }
+
+        /* ---- Instructions card ---- */
         .instructions-card {
             position: fixed;
             z-index: 50;
@@ -493,7 +411,6 @@
             line-height: 1.3;
         }
 
-        /* Portrait: horizontal bar above controls */
         @media (orientation: portrait) {
             .instructions-card {
                 bottom: 120px;
@@ -513,17 +430,27 @@
                 gap: 6px;
             }
 
-            .instructions-title {
-                text-align: center;
+            .instructions-title { text-align: center; }
+
+            .arm-cards {
+                top: auto;
+                bottom: 100px;
+                right: 10px;
+                left: 10px;
+                flex-direction: row;
+                flex-wrap: wrap;
+                justify-content: flex-end;
+                max-height: none;
             }
+
+            .arm-card { min-width: 160px; }
         }
 
-        /* Landscape: vertical card top-right */
         @media (orientation: landscape) {
             .instructions-card {
                 top: 24px;
-                right: 24px;
-                max-width: 260px;
+                left: 24px;
+                max-width: 220px;
             }
         }
 
@@ -533,23 +460,37 @@
             color: #1a1a1a;
         }
 
-        html.light #camera-screen { background: #fff; }
-
-        html.light #status-screen { background: #f5f5f7; }
-
-        html.light .status-overlay {
-            background: radial-gradient(ellipse at center,
-                rgba(245,245,247,0.5) 0%,
-                rgba(245,245,247,0.85) 70%,
-                rgba(245,245,247,0.95) 100%);
+        html.light .arm-card {
+            background: rgba(255, 255, 255, 0.9);
+            border-color: rgba(0,0,0,0.1);
         }
 
-        html.light .status-backdrop {
-            filter: blur(40px) brightness(1.1) saturate(0.8);
+        html.light .arm-card-name { color: #333; }
+        html.light .arm-card-status { color: #888; }
+        html.light .arm-card-message { color: #999; }
+
+        html.light .arm-card-progress {
+            background: rgba(0,0,0,0.06);
         }
 
-        html.light .review-controls {
-            background: rgba(0,0,0,0.7);
+        html.light .queue-indicator {
+            background: rgba(243,156,18,0.1);
+        }
+
+        html.light .connection-bar.disconnected { background: #e74c3c; }
+        html.light .connection-bar.no-robot { background: #f39c12; }
+
+        html.light .controls-bar {
+            background: rgba(255,255,255,0.85);
+            border-top: 1px solid rgba(0,0,0,0.08);
+        }
+
+        html.light .capture-btn {
+            border-color: #333;
+        }
+
+        html.light .capture-btn::after {
+            background: #333;
         }
 
         html.light .btn-secondary {
@@ -557,170 +498,21 @@
             color: #333;
         }
 
-        html.light .camera-error {
-            background: #f5f5f7;
-        }
-
-        html.light .camera-error p {
-            color: #666;
-        }
-
-        html.light .progress-bg {
-            stroke: rgba(0,0,0,0.06);
-        }
-
-        html.light .progress-number {
-            color: #1a1a1a;
-        }
-
-        html.light .status-message {
-            color: rgba(0,0,0,0.7);
-        }
-
-        html.light .phase-step span {
-            color: #999;
-        }
-
-        html.light .phase-step.active span,
-        html.light .phase-step.done span {
-            color: #555;
-        }
-
-        html.light .phase-dot {
-            border-color: #ccc;
-        }
-
-        html.light .phase-connector {
-            background: #ddd;
-        }
-
         html.light .countdown-number {
             color: #1a1a1a;
             text-shadow: 0 0 40px rgba(255,255,255,0.6);
         }
 
-        html.light .connection-bar.disconnected {
-            background: #e74c3c;
+        html.light .camera-error { background: #f5f5f7; }
+        html.light .camera-error p { color: #666; }
+
+        html.light .instructions-card {
+            background: rgba(255,255,255,0.9);
+            border-color: rgba(0,0,0,0.08);
         }
 
-        html.light .connection-bar.no-robot {
-            background: #f39c12;
-        }
-
-        /* Logo */
-        .logo {
-            position: fixed;
-            top: 30px;
-            left: 30px;
-            z-index: 50;
-            pointer-events: none;
-        }
-
-        .logo img {
-            height: 48px;
-            width: auto;
-            opacity: 0.9;
-        }
-
-        /* ---- Fleet Status Bar ---- */
-        .fleet-bar {
-            position: fixed;
-            bottom: 0;
-            left: 0;
-            right: 0;
-            background: rgba(0,0,0,0.7);
-            backdrop-filter: blur(8px);
-            -webkit-backdrop-filter: blur(8px);
-            padding: 10px 16px;
-            padding-bottom: max(10px, env(safe-area-inset-bottom));
-            display: flex;
-            gap: 10px;
-            justify-content: center;
-            align-items: center;
-            flex-wrap: wrap;
-            z-index: 90;
-        }
-
-        .fleet-bar.hidden { display: none; }
-
-        .arm-pill {
-            display: flex;
-            align-items: center;
-            gap: 6px;
-            padding: 6px 14px;
-            border-radius: 20px;
-            font-size: 0.72rem;
-            letter-spacing: 0.3px;
-            border: 1px solid rgba(255,255,255,0.1);
-            background: rgba(255,255,255,0.05);
-            transition: all 0.3s ease;
-        }
-
-        .arm-pill .arm-dot {
-            width: 8px;
-            height: 8px;
-            border-radius: 50%;
-            flex-shrink: 0;
-        }
-
-        .arm-pill[data-status="idle"] .arm-dot { background: #27ae60; }
-        .arm-pill[data-status="processing"] .arm-dot { background: #f39c12; }
-        .arm-pill[data-status="drawing"] .arm-dot { background: #667eea; }
-        .arm-pill[data-status="complete"] .arm-dot { background: #27ae60; }
-        .arm-pill[data-status="error"] .arm-dot { background: #e74c3c; }
-
-        .arm-pill[data-status="complete"],
-        .arm-pill[data-status="error"] {
-            cursor: pointer;
-            border-color: rgba(255,255,255,0.25);
-        }
-
-        .arm-pill[data-status="complete"]:active,
-        .arm-pill[data-status="error"]:active {
-            transform: scale(0.95);
-        }
-
-        .arm-pill .arm-label { color: #aaa; }
-        .arm-pill .arm-status-text {
-            color: #666;
-            font-size: 0.65rem;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-        }
-
-        .fleet-queue {
-            color: #f39c12;
-            font-size: 0.72rem;
-            margin-left: 8px;
-            letter-spacing: 0.3px;
-        }
-
-        /* Queue banner on status screen */
-        .queue-banner {
-            display: none;
-            font-size: 0.9rem;
-            color: #f39c12;
-            margin-bottom: 16px;
-            letter-spacing: 0.3px;
-        }
-
-        .queue-banner.show { display: block; }
-
-        /* Light mode fleet bar */
-        html.light .fleet-bar {
-            background: rgba(255,255,255,0.85);
-            border-top: 1px solid rgba(0,0,0,0.08);
-        }
-
-        html.light .arm-pill {
-            border-color: rgba(0,0,0,0.1);
-            background: rgba(0,0,0,0.03);
-        }
-
-        html.light .arm-pill .arm-label { color: #555; }
-        html.light .arm-pill .arm-status-text { color: #999; }
-        html.light .fleet-queue { color: #e67e22; }
-        html.light .queue-banner { color: #e67e22; }
+        html.light .instructions-title { color: rgba(0,0,0,0.4); }
+        html.light .step-text { color: rgba(0,0,0,0.6); }
     </style>
 </head>
 <body>
@@ -756,215 +548,66 @@
         </div>
     </div>
 
-    <!-- Screen 1: Camera -->
-    <div class="screen active" id="camera-screen">
-        <div class="camera-area">
-            <video id="camera-video" playsinline autoplay muted></video>
-
-            <!-- <div class="silhouette-guide" id="silhouetteGuide">
-                <svg viewBox="0 0 200 260" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <ellipse cx="100" cy="80" rx="48" ry="58" stroke="white" stroke-width="2" stroke-dasharray="6 4"/>
-                    <path d="M80 135 L80 155 M120 135 L120 155" stroke="white" stroke-width="2" stroke-dasharray="6 4"/>
-                    <path d="M80 155 Q60 155 30 175 Q10 185 5 210 L5 260 M120 155 Q140 155 170 175 Q190 185 195 210 L195 260"
-                          stroke="white" stroke-width="2" stroke-dasharray="6 4"/>
-                </svg>
-            </div> -->
-
-            <div class="camera-error" id="cameraError">
-                <p>Unable to access camera.<br>Please allow camera permissions and reload the page.</p>
-            </div>
-
-            <div class="countdown-overlay" id="countdownOverlay" style="display: none;"></div>
-
-            <div id="captured-preview">
-                <img id="preview-img" src="" alt="Captured photo">
-            </div>
-
-            <div class="camera-controls" id="captureControls">
-                <button class="capture-btn" id="captureBtn" aria-label="Take photo"></button>
-            </div>
-
-            <div class="review-controls" id="reviewControls">
-                <button class="btn btn-secondary" id="retakeBtn">Retake</button>
-                <button class="btn btn-primary" id="submitBtn">Submit</button>
-            </div>
+    <!-- Full-screen camera (always visible) -->
+    <div class="camera-layer">
+        <video id="camera-video" playsinline autoplay muted></video>
+        <div class="camera-error" id="cameraError">
+            <p>Unable to access camera.<br>Please allow camera permissions and reload the page.</p>
         </div>
     </div>
 
-    <!-- Screen 2: Status -->
-    <div class="screen" id="status-screen">
-        <div class="status-backdrop" id="statusBackdrop"></div>
-        <div class="status-overlay"></div>
-
-        <div class="status-content">
-            <!-- Phase steps -->
-            <div class="phase-steps">
-                <div class="phase-step active" id="phaseSend">
-                    <div class="phase-dot"></div>
-                    <span>Send</span>
-                </div>
-                <div class="phase-connector" id="connector1"></div>
-                <div class="phase-step" id="phaseGenerate">
-                    <div class="phase-dot"></div>
-                    <span>Generate</span>
-                </div>
-                <div class="phase-connector" id="connector2"></div>
-                <div class="phase-step" id="phaseDraw">
-                    <div class="phase-dot"></div>
-                    <span>Draw</span>
-                </div>
-            </div>
-
-            <!-- Circular progress -->
-            <div class="circular-progress">
-                <svg viewBox="0 0 120 120">
-                    <defs>
-                        <linearGradient id="progressGradient" x1="0%" y1="0%" x2="100%" y2="0%">
-                            <stop offset="0%" stop-color="#667eea"/>
-                            <stop offset="100%" stop-color="#9b6dff"/>
-                        </linearGradient>
-                    </defs>
-                    <circle class="progress-bg" cx="60" cy="60" r="52"/>
-                    <circle class="progress-ring" cx="60" cy="60" r="52" id="progressRing"/>
-                </svg>
-                <div class="progress-center">
-                    <div class="complete-icon" id="completeIcon">
-                        <svg viewBox="0 0 56 56" fill="none">
-                            <circle cx="28" cy="28" r="26" stroke="#667eea" stroke-width="2" opacity="0.3"/>
-                            <path class="complete-check-path" d="M17 28 L24 35 L39 20"
-                                  stroke="#667eea" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
-                        </svg>
-                    </div>
-                    <div id="progressCenter">
-                        <div class="progress-number" id="progressNumber">0</div>
-                    </div>
-                </div>
-            </div>
-
-            <div class="queue-banner" id="queueBanner">Position <span id="queuePos">-</span> in queue</div>
-
-            <div class="status-message" id="statusMessage">Sending to robot...</div>
-
-            <div class="status-action">
-                <button class="btn btn-primary" id="newPhotoBtn" style="display: none;">Take Another Photo</button>
-            </div>
-        </div>
+    <!-- Captured preview overlay -->
+    <div id="captured-preview">
+        <img id="preview-img" src="" alt="Captured photo">
     </div>
 
-    <!-- Fleet status bar -->
-    <div class="fleet-bar hidden" id="fleetBar"></div>
+    <!-- Countdown overlay -->
+    <div class="countdown-overlay" id="countdownOverlay" style="display: none;"></div>
+
+    <!-- Arm status cards (top right overlay) -->
+    <div class="arm-cards" id="armCards"></div>
+
+    <!-- Bottom controls -->
+    <div class="controls-bar" id="controlsBar">
+        <button class="capture-btn" id="captureBtn" aria-label="Take photo"></button>
+        <div class="review-controls" id="reviewControls">
+            <button class="btn btn-secondary" id="retakeBtn">Retake</button>
+            <button class="btn btn-primary" id="submitBtn">Submit</button>
+        </div>
+    </div>
 
     <!-- Hidden canvas for photo capture -->
     <canvas id="captureCanvas" style="display: none;"></canvas>
 
     <script>
         // --- State ---
-        let currentScreen = 'camera-screen';
         const selectedStyle = 'simple';
         let capturedPhotoData = null;
+        let submitPhotoData = null;
         let cameraStream = null;
         let robotConnected = false;
         let myJobId = null;
-        const RING_CIRCUMFERENCE = 2 * Math.PI * 52;
+        let armsState = {};  // arm_id -> { status, label, message, percent }
 
         // --- Elements ---
         const video = document.getElementById('camera-video');
         const captureBtn = document.getElementById('captureBtn');
-        const captureControls = document.getElementById('captureControls');
         const reviewControls = document.getElementById('reviewControls');
         const captureCanvas = document.getElementById('captureCanvas');
         const previewEl = document.getElementById('captured-preview');
         const previewImg = document.getElementById('preview-img');
         const retakeBtn = document.getElementById('retakeBtn');
         const submitBtn = document.getElementById('submitBtn');
-        const newPhotoBtn = document.getElementById('newPhotoBtn');
-        const statusMessage = document.getElementById('statusMessage');
-        const progressRing = document.getElementById('progressRing');
-        const progressNumber = document.getElementById('progressNumber');
-        const progressCenter = document.getElementById('progressCenter');
-        const completeIcon = document.getElementById('completeIcon');
         const connectionBar = document.getElementById('connectionBar');
-        const statusBackdrop = document.getElementById('statusBackdrop');
-        const fleetBar = document.getElementById('fleetBar');
-        const queueBanner = document.getElementById('queueBanner');
-        const queuePos = document.getElementById('queuePos');
-
-        const phases = {
-            send: document.getElementById('phaseSend'),
-            generate: document.getElementById('phaseGenerate'),
-            draw: document.getElementById('phaseDraw'),
-        };
-        const connectors = [
-            document.getElementById('connector1'),
-            document.getElementById('connector2'),
-        ];
-
-        // --- Screen management ---
-        function showScreen(screenId) {
-            document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
-            document.getElementById(screenId).classList.add('active');
-            currentScreen = screenId;
-            document.getElementById('instructionsCard').style.display =
-                screenId === 'camera-screen' ? '' : 'none';
-        }
-
-        // --- Progress ring ---
-        function setProgress(percent) {
-            const offset = RING_CIRCUMFERENCE - (percent / 100) * RING_CIRCUMFERENCE;
-            progressRing.style.strokeDashoffset = offset;
-            progressNumber.textContent = `${Math.round(percent)} %`;
-        }
-
-        // --- Phase management ---
-        function setPhase(phase) {
-            Object.values(phases).forEach(el => el.classList.remove('active', 'done'));
-            connectors.forEach(c => c.classList.remove('filled'));
-
-            if (phase === 'send' || phase === 'queued') {
-                phases.send.classList.add('active');
-            } else if (phase === 'processing') {
-                phases.send.classList.add('done');
-                connectors[0].classList.add('filled');
-                phases.generate.classList.add('active');
-            } else if (phase === 'drawing') {
-                phases.send.classList.add('done');
-                phases.generate.classList.add('done');
-                connectors[0].classList.add('filled');
-                connectors[1].classList.add('filled');
-                phases.draw.classList.add('active');
-            } else if (phase === 'complete') {
-                phases.send.classList.add('done');
-                phases.generate.classList.add('done');
-                phases.draw.classList.add('done');
-                connectors[0].classList.add('filled');
-                connectors[1].classList.add('filled');
-            }
-        }
-
-        function resetStatusScreen() {
-            setProgress(0);
-            setPhase('send');
-            progressCenter.style.display = '';
-            completeIcon.classList.remove('show');
-            newPhotoBtn.style.display = 'none';
-            statusBackdrop.classList.remove('visible');
-            statusMessage.textContent = 'Sending to robot...';
-            queueBanner.classList.remove('show');
-        }
+        const armCards = document.getElementById('armCards');
 
         // --- Camera ---
         async function startCamera() {
             try {
-                const constraints = {
-                    video: {
-                        facingMode: 'user',
-                        width: { ideal: 1280 },
-                        height: { ideal: 720 }
-                    },
+                cameraStream = await navigator.mediaDevices.getUserMedia({
+                    video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 } },
                     audio: false
-                };
-
-                cameraStream = await navigator.mediaDevices.getUserMedia(constraints);
+                });
                 video.srcObject = cameraStream;
                 await video.play();
                 document.getElementById('cameraError').classList.remove('show');
@@ -1007,15 +650,12 @@
             tick();
         }
 
-        let submitPhotoData = null;
-
         function snapPhoto() {
             const track = cameraStream.getVideoTracks()[0];
             const settings = track.getSettings();
             const w = settings.width || video.videoWidth;
             const h = settings.height || video.videoHeight;
 
-            // Full-res capture for preview
             captureCanvas.width = w;
             captureCanvas.height = h;
             const ctx = captureCanvas.getContext('2d');
@@ -1028,7 +668,7 @@
 
             capturedPhotoData = captureCanvas.toDataURL('image/jpeg', 0.92);
 
-            // Downsized copy for submission
+            // Downsized for submission
             const maxDim = 1024;
             let sw = w, sh = h;
             if (w > h && w > maxDim) { sw = maxDim; sh = Math.round(h * maxDim / w); }
@@ -1050,42 +690,28 @@
 
             previewImg.src = capturedPhotoData;
             previewEl.classList.add('show');
-            captureControls.style.display = 'none';
+            captureBtn.style.display = 'none';
             reviewControls.classList.add('show');
         }
 
         function retakePhoto() {
             capturedPhotoData = null;
+            submitPhotoData = null;
             previewEl.classList.remove('show');
             reviewControls.classList.remove('show');
-            captureControls.style.display = 'flex';
+            captureBtn.style.display = '';
         }
 
-        // --- Submission ---
         function submitPhoto() {
             if (!submitPhotoData) return;
-
-            resetStatusScreen();
-
-            // Set captured photo as blurred backdrop
-            statusBackdrop.style.backgroundImage = `url(${capturedPhotoData})`;
-            requestAnimationFrame(() => statusBackdrop.classList.add('visible'));
-
-            showScreen('status-screen');
 
             socket.emit('submit_photo', {
                 photo: submitPhotoData,
                 style: selectedStyle
             });
-        }
 
-        function resetForNewPhoto() {
-            capturedPhotoData = null;
-            submitPhotoData = null;
-            previewEl.classList.remove('show');
-            reviewControls.classList.remove('show');
-            captureControls.style.display = 'flex';
-            showScreen('camera-screen');
+            // Return to camera view
+            retakePhoto();
         }
 
         // --- SocketIO ---
@@ -1101,81 +727,52 @@
             connectionBar.textContent = 'Connection lost - reconnecting...';
         });
 
-        // --- Multi-arm: overview event (replaces old 'state') ---
         socket.on('overview', (data) => {
             robotConnected = data.any_connected;
             updateConnectionUI();
-            renderFleetBar(data.arms, data.queue_depth);
+
+            // Sync arm states from overview
+            const armIds = new Set();
+            (data.arms || []).forEach(a => {
+                armIds.add(a.arm_id);
+                if (!armsState[a.arm_id]) {
+                    armsState[a.arm_id] = { status: a.status, label: a.label, message: '', percent: 0 };
+                } else {
+                    armsState[a.arm_id].status = a.status;
+                    armsState[a.arm_id].label = a.label;
+                }
+            });
+            // Remove disconnected arms
+            Object.keys(armsState).forEach(id => {
+                if (!armIds.has(id)) delete armsState[id];
+            });
+
+            renderArmCards(data.queue_depth);
         });
 
-        // Server confirms our job is queued
         socket.on('queued', (data) => {
             myJobId = data.job_id;
-            if (data.position > 0) {
-                queueBanner.classList.add('show');
-                queuePos.textContent = data.position;
-                statusMessage.textContent = `Waiting in queue (position ${data.position})...`;
-                setPhase('queued');
-            } else {
-                queueBanner.classList.remove('show');
-            }
         });
 
         socket.on('status', (data) => {
-            // Only process status events for our own job
-            if (myJobId && data.job_id && data.job_id !== myJobId) return;
+            if (!data.arm_id) return;
 
-            if (currentScreen !== 'status-screen') {
-                resetStatusScreen();
-                showScreen('status-screen');
+            // Update arm state
+            if (!armsState[data.arm_id]) {
+                armsState[data.arm_id] = { status: data.status, label: data.label || data.arm_id, message: '', percent: 0 };
             }
 
-            // Hide queue banner once drawing starts
-            if (data.status === 'processing' || data.status === 'drawing') {
-                queueBanner.classList.remove('show');
-                if (data.label) {
-                    statusMessage.textContent = data.message || `Drawing on ${data.label}...`;
-                } else {
-                    statusMessage.textContent = data.message || 'Processing...';
-                }
-            } else {
-                statusMessage.textContent = data.message || 'Processing...';
-            }
+            const arm = armsState[data.arm_id];
+            arm.status = data.status;
+            arm.message = data.message || '';
+            arm.percent = data.percent || 0;
+            if (data.label) arm.label = data.label;
 
-            setPhase(data.status);
-
-            if (data.percent > 0) setProgress(data.percent);
-
-            if (data.status === 'complete') {
-                setProgress(100);
-                setPhase('complete');
-                progressCenter.style.display = 'none';
-                completeIcon.classList.add('show');
-                statusMessage.textContent = 'Portrait complete!';
-                myJobId = null;
-
-                setTimeout(() => {
-                    if (currentScreen === 'status-screen') {
-                        resetForNewPhoto();
-                    }
-                }, 5000);
-            }
-
-            if (data.status === 'error') {
-                myJobId = null;
-                newPhotoBtn.style.display = 'inline-block';
-            }
+            renderArmCards();
         });
 
         socket.on('error', (data) => {
-            if (currentScreen === 'status-screen') {
-                statusMessage.textContent = data.message || 'An error occurred';
-                newPhotoBtn.style.display = 'inline-block';
-                queueBanner.classList.remove('show');
-                myJobId = null;
-            } else {
-                alert(data.message || 'An error occurred');
-            }
+            alert(data.message || 'An error occurred');
         });
 
         function updateConnectionUI() {
@@ -1183,140 +780,94 @@
                 connectionBar.className = 'connection-bar no-robot';
                 connectionBar.textContent = 'All robots offline';
                 submitBtn.disabled = true;
+                captureBtn.disabled = true;
             } else {
                 connectionBar.className = 'connection-bar';
                 connectionBar.textContent = '';
                 submitBtn.disabled = false;
+                captureBtn.disabled = false;
             }
         }
 
-        // --- Fleet bar rendering ---
-        function renderFleetBar(arms, queueDepth) {
-            if (!arms || arms.length === 0) {
-                fleetBar.classList.add('hidden');
-                return;
-            }
-            fleetBar.classList.remove('hidden');
-
+        // --- Arm card rendering ---
+        function renderArmCards(queueDepth) {
             const statusLabels = {
                 idle: 'Ready',
-                processing: 'Generating',
+                processing: 'Generating...',
                 drawing: 'Drawing',
-                complete: 'Done — tap to reset',
-                error: 'Error — tap to reset',
+                complete: 'Complete',
+                error: 'Error',
+                testing: 'Testing',
             };
 
-            let html = arms.map(a => {
-                const clickable = (a.status === 'complete' || a.status === 'error');
-                const onclick = clickable ? `onclick="confirmReady('${a.arm_id}')"` : '';
-                return `<div class="arm-pill" data-status="${a.status}" ${onclick}>
-                    <span class="arm-dot"></span>
-                    <span class="arm-label">${a.label || a.arm_id}</span>
-                    <span class="arm-status-text">${statusLabels[a.status] || a.status}</span>
-                </div>`;
-            }).join('');
+            const statusColors = {
+                idle: '#27ae60',
+                processing: '#f39c12',
+                drawing: '#667eea',
+                complete: '#27ae60',
+                error: '#e74c3c',
+                testing: '#9b59b6',
+            };
 
-            if (queueDepth > 0) {
-                html += `<span class="fleet-queue">${queueDepth} in queue</span>`;
+            const ids = Object.keys(armsState);
+            if (ids.length === 0) {
+                armCards.innerHTML = '';
+                return;
             }
 
-            fleetBar.innerHTML = html;
+            let html = '';
+            ids.forEach(id => {
+                const a = armsState[id];
+                const showProgress = (a.status === 'drawing' || a.status === 'processing');
+                const showConfirm = (a.status === 'complete');
+                const showReset = (a.status === 'error');
+                const showForce = (a.status === 'testing' || a.status === 'processing' || a.status === 'drawing');
+
+                html += `<div class="arm-card" data-status="${a.status}">
+                    <div class="arm-card-header">
+                        <div class="arm-card-dot"></div>
+                        <div class="arm-card-name">${a.label || id}</div>
+                    </div>
+                    <div class="arm-card-status">${statusLabels[a.status] || a.status}</div>
+                    <div class="arm-card-progress ${showProgress ? 'show' : ''}">
+                        <div class="arm-card-progress-fill" style="width: ${a.percent || 0}%"></div>
+                    </div>
+                    ${a.message ? `<div class="arm-card-message">${a.message}</div>` : ''}
+                    ${showConfirm ? `<div class="arm-card-action">
+                        <button class="arm-card-btn confirm-btn" onclick="confirmReady('${id}')">Confirm Ready</button>
+                    </div>` : ''}
+                    ${showReset ? `<div class="arm-card-action">
+                        <button class="arm-card-btn reset-btn" onclick="confirmReady('${id}')">Reset</button>
+                    </div>` : ''}
+                    ${showForce ? `<div class="arm-card-action">
+                        <button class="arm-card-btn force-btn" onclick="forceReset('${id}')">Force Reset</button>
+                    </div>` : ''}
+                </div>`;
+            });
+
+            // Queue indicator
+            if (queueDepth > 0) {
+                html += `<div class="queue-indicator show">${queueDepth} job${queueDepth > 1 ? 's' : ''} in queue</div>`;
+            }
+
+            armCards.innerHTML = html;
         }
 
         function confirmReady(armId) {
             socket.emit('confirm_ready', { arm_id: armId });
         }
 
+        function forceReset(armId) {
+            socket.emit('force_reset', { arm_id: armId });
+        }
+
         // --- Event Listeners ---
         captureBtn.addEventListener('click', capturePhoto);
         retakeBtn.addEventListener('click', retakePhoto);
         submitBtn.addEventListener('click', submitPhoto);
-        newPhotoBtn.addEventListener('click', resetForNewPhoto);
 
         // --- Init ---
         startCamera();
-
-        // --- Localhost Debug Panel ---
-        if (location.hostname === 'localhost' || location.hostname === '127.0.0.1') {
-            const panel = document.createElement('div');
-            panel.innerHTML = `
-                <div id="debugPanel" style="position:fixed;bottom:0;left:0;right:0;z-index:9999;
-                    background:rgba(0,0,0,0.9);padding:10px 14px;display:flex;gap:8px;
-                    align-items:center;flex-wrap:wrap;font-size:13px;border-top:1px solid #333;">
-                    <span style="color:#f39c12;font-weight:600;margin-right:4px;">DEBUG</span>
-                    <button onclick="debugSim('send')">Send</button>
-                    <button onclick="debugSim('processing')">Generate</button>
-                    <button onclick="debugSim('drawing')">Draw</button>
-                    <button onclick="debugSim('complete')">Complete</button>
-                    <button onclick="debugSimRun()">Run All</button>
-                    <button onclick="resetForNewPhoto()">Reset</button>
-                </div>
-            `;
-            panel.querySelectorAll('button').forEach(b => {
-                Object.assign(b.style, {
-                    background:'#2a2a4a',color:'#ccc',border:'none',borderRadius:'6px',
-                    padding:'6px 12px',cursor:'pointer',fontSize:'12px'
-                });
-            });
-            document.body.appendChild(panel);
-
-            window.debugSim = function(phase) {
-                if (currentScreen !== 'status-screen') {
-                    resetStatusScreen();
-                    showScreen('status-screen');
-                }
-                setPhase(phase);
-                if (phase === 'send') {
-                    statusMessage.textContent = 'Sending to robot...';
-                    setProgress(0);
-                } else if (phase === 'processing') {
-                    statusMessage.textContent = 'Generating line art...';
-                    setProgress(0);
-                } else if (phase === 'drawing') {
-                    statusMessage.textContent = 'Drawing line 0/20';
-                    setProgress(0);
-                } else if (phase === 'complete') {
-                    setProgress(100);
-                    setPhase('complete');
-                    progressCenter.style.display = 'none';
-                    completeIcon.classList.add('show');
-                    statusMessage.textContent = 'Portrait complete!';
-                }
-            };
-
-            window.debugSimRun = function() {
-                const totalContours = 20;
-                resetStatusScreen();
-                showScreen('status-screen');
-
-                // Send phase
-                setPhase('send');
-                statusMessage.textContent = 'Sending to robot...';
-
-                setTimeout(() => {
-                    // Processing phase
-                    setPhase('processing');
-                    statusMessage.textContent = 'Generating line art...';
-                }, 1500);
-
-                setTimeout(() => {
-                    // Drawing phase - animate contours
-                    setPhase('drawing');
-                    let contour = 0;
-                    const interval = setInterval(() => {
-                        contour++;
-                        if (contour > totalContours) {
-                            clearInterval(interval);
-                            debugSim('complete');
-                            return;
-                        }
-                        const pct = Math.round(100 * contour / totalContours);
-                        setProgress(pct);
-                        statusMessage.textContent = `Drawing line ${contour}/${totalContours}`;
-                    }, 300);
-                }, 3500);
-            };
-        }
     </script>
 </body>
 </html>
