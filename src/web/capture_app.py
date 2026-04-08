@@ -216,6 +216,15 @@ class ArmPool:
                 return True
         return False
 
+    def force_reset_arm(self, arm_id: str):
+        """Force any arm back to idle regardless of current state."""
+        with self._lock:
+            if arm_id in self.arms:
+                self.arms[arm_id].status = 'idle'
+                self.active_jobs.pop(arm_id, None)
+                return True
+        return False
+
     def update_arm_config(self, arm_id: str, config: dict):
         """Store arm's reported config."""
         with self._lock:
@@ -371,6 +380,19 @@ def handle_confirm_ready(data):
         _try_dispatch()
     elif pool.reset_arm_error(arm_id):
         logger.info(f"Arm '{arm_id}' error reset by operator")
+        _broadcast_overview()
+        _try_dispatch()
+
+
+@socketio.on('force_reset', namespace='/capture')
+def handle_force_reset(data):
+    """Force reset an arm to idle regardless of state."""
+    arm_id = data.get('arm_id')
+    if not arm_id:
+        return
+
+    if pool.force_reset_arm(arm_id):
+        logger.info(f"Arm '{arm_id}' force reset to idle by operator")
         _broadcast_overview()
         _try_dispatch()
 

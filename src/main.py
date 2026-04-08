@@ -46,6 +46,7 @@ from src.vision.adaptive_extractor import AdaptiveContourExtractor, AdaptiveExtr
 from src.ai.openai_client import OpenAIClient, MockOpenAIClient
 from src.planning.gcode_generator import GCodeGenerator, DrawingBounds
 from src.personality import PersonalityDirector
+from src.integrations.cloud_sync import CloudSync
 
 # Setup logging
 logging.basicConfig(
@@ -88,6 +89,7 @@ class PortraitSystem:
         self.openai_client: Optional[OpenAIClient] = None
         self.gcode_generator: Optional[GCodeGenerator] = None
         self.personality: Optional[PersonalityDirector] = None
+        self.cloud_sync: Optional[CloudSync] = None
 
         self._is_initialized = False
         self._output_dir = Path(config.system.output_dir)
@@ -260,6 +262,12 @@ class PortraitSystem:
             self.config.drawing.safe_position.get('z', 30)
         )
 
+        # Initialize cloud sync (Cloudinary + Salesforce) — optional
+        self.cloud_sync = CloudSync()
+        if not self.cloud_sync.initialize():
+            logger.info("Cloud sync not available — drawing will continue without it")
+            self.cloud_sync = None
+
         self._is_initialized = True
         logger.info("=" * 60)
         logger.info("System initialized successfully!")
@@ -384,6 +392,12 @@ class PortraitSystem:
                 return False
 
             logger.info(f"Line art generated: {line_art.shape}")
+
+            # Sync to Cloudinary + Salesforce in background
+            if self.cloud_sync:
+                self.cloud_sync.sync_in_background(
+                    str(lineart_path), self.openai_client.prompt
+                )
 
             # Stage 3: Extract contours
             logger.info("\n" + "=" * 40)
@@ -573,6 +587,12 @@ class PortraitSystem:
             if line_art is None:
                 notify('error', 'Failed to generate line art')
                 return False
+
+            # Sync to Cloudinary + Salesforce in background
+            if self.cloud_sync:
+                self.cloud_sync.sync_in_background(
+                    str(lineart_path), self.openai_client.prompt
+                )
 
             # Stage 3: Extract contours
             notify('processing', 'Extracting drawing paths...', 0)
